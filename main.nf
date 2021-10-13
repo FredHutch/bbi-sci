@@ -1,934 +1,171 @@
-/*
-** Check that Nextflow version meets minimum version requirements.
-*/
-def minMajorVersion = 20
-def minMinorVersion = 07
-checkNextflowVersion( minMajorVersion, minMinorVersion )
+#!/usr/bin/env nextflow
 
+nextflow.enable.dsl=2
 
-/*
-** Check OS version.
-** Notes:
-**   o  works only for Linux systems
-**   o  used to distinguish between CentOS 6 and CentOS 7
-*/
-( osName, osDistribution, osRelease ) = getOSInfo()
+DEFAULT = "default"
+default_star_file = "$baseDir/bin/star_file.txt"
+default_gene_file = "$baseDir/bin/gene_file.txt"
+default_rt2_barcode_file = "$baseDir/bin/barcode_files/rt2.txt"
+default_rt3_barcode_file = "$baseDir/bin/barcode_files/rt.txt"
 
+// Containers used
+params.container__python = "python:3.7.7"
+genome_tools_container = "ghcr.io/fredhutch/docker-genome-tools:latest"
+params.container__tools = genome_tools_container
+params.container__trim_galore = genome_tools_container
+params.container__star = "quay.io/biocontainers/star:2.6.1d--0"
+params.container__samtools = "quay.io/biocontainers/samtools:1.9"
 
 // Parse input parameters
 params.help = false
 params.samples = false
-params.star_file = "$baseDir/bin/star_file.txt"
-params.gene_file = "$baseDir/bin/gene_file.txt"
+params.star_file = DEFAULT
+params.gene_file = DEFAULT
 params.umi_cutoff = 100
-params.rt_barcode_file="default"
+params.rt_barcode_file=DEFAULT
 params.max_cores = 16
 params.hash_list = false
 params.max_wells_per_sample = 20
 params.garnett_file = false
 params.skip_doublet_detect = false
+params.level = 3
+params.demux_out = false
+params.sample_sheet = false
+params.output_dir = false
 
-//print usage
-if (params.help) {
-    log.info ''
-    log.info 'BBI sci-RNA-seq Pipeline'
-    log.info '--------------------------------'
-    log.info ''
-    log.info 'For reproducibility, please specify all parameters to a config file'
-    log.info 'by specifying -c CONFIG_FILE.config.'
-    log.info ''
-    log.info 'Usage: '
-    log.info '    nextflow run bbi-sci -c CONFIG_FILE'
-    log.info ''
-    log.info 'Help: '
-    log.info '    --help                                     Show this message and exit.'
-    log.info ''
-    log.info 'Required parameters (specify in your config file):'
-    log.info '    params.output_dir = OUTPUT DIRECTORY       Output directory.'
-    log.info '    params.sample_sheet = SAMPLE_SHEET_PATH    Sample sheet of the format described in the README.'
-    log.info '    params.demux_out = DEMUX OUTPUT DIR        Path to the demux_out folder from the bbi-dmux run.'
-    log.info '    params.level = 3                           2 or 3 level sci?'
-    log.info ''
-    log.info 'Optional parameters (specify in your config file):'
-    log.info '    params.rt_barcode_file = "default"         The path to a custom RT barcode file. If "default", default BBI barcodes will be used.'
-    log.info '    params.max_cores = 16                      The maximum number of cores to use - fewer will be used if appropriate.'
-    log.info '    process.maxForks = 20                      The maximum number of processes to run at the same time on the cluster.'
-    log.info '    process.queue = "trapnell-short.q"         The queue on the cluster where the jobs should be submitted. '
-    log.info '    params.samples = [sample1, sample2]        Add to only run certain samples from trimming on. Default is to run all.'
-    log.info '    params.star_file = PATH/TO/FILE            File with the genome to star maps, similar to the one included with the package.'
-    log.info '    params.gene_file = PATH/TO/FILE            File with the genome to gene model maps, similar to the one included with the package.'
-    log.info '    params.umi_cutoff = 100                    The umi cutoff to be called a cell in matrix output.'
-    log.info '    params.hash_list = false                   Path to a tab-delimited file with at least two columns, first the hash name and second the hash barcode sequence. Default is false to indicate no hashing.'
-    log.info '    params.max_wells_per_sample = 20           The maximum number of wells per sample - if a sample is in more wells, the fastqs will be split then reassembled for efficiency.'
-    log.info '    params.garnett_file = false                Path to a csv with two columns, first is the sample name, and second is a path to the Garnett classifier to be applied to that sample. Default is false - no classification.'
-    log.info '    params.skip_doublet_detect = false         Whether to skip doublet detection, i.e. scrublet - useful for very large datasets.'
-    log.info ''
-    log.info 'Issues? Contact hpliner@uw.edu'
-    exit 1
-}
+// NF Modules
+import {
+    check_sample_sheet
+} from 'modules/samplesheets'
 
-// check required options
-if (!params.output_dir || !params.sample_sheet || !params.level || !params.demux_out) {
-    exit 1, "Must include config file using -c CONFIG_FILE.config that includes output_dir, sample_sheet, level and demux_out"
-}
-
-
-/*************
-
-Process: check_sample_sheet
-
- Inputs:
-    params.sample_sheet
-    params.star_file
-    params.level
-    params.max_wells_per_sample
-    params.rt_barcode_file
-
- Outputs:
-    good_sample_sheet - corrected csv sample sheet
-    logfile - running log
-    log_piece1 - piece of log to be concatenated for full log
-
- Pass through:
-
- Summary:
-    Check and process sample sheet - check_sample_sheet.py
-    Start log
-
- Downstream:
-    gather_info
+import {
     trim_fastqs
-    combine_logs
+} from 'modules/trim'
 
- Published:
+import {
+    process_hashes
+} from 'modules/hash'
 
- Notes:
+def helpMessage() {
+    log.info"""
+        BBI sci-RNA-seq Pipeline
+        --------------------------------
 
-*************/
+        For reproducibility, please specify all parameters to a config file
+        by specifying -c CONFIG_FILE.config.
 
-process check_sample_sheet {
-    cache 'lenient'
+        Usage:
+            nextflow run bbi-sci -c CONFIG_FILE
 
-    output:
-        file "*.csv" into good_sample_sheet
-        file '*.log' into log_check_sample
-        file 'start.txt' into log_piece1
+        Help:
+            --help                                     Show this message and exit.
 
-    """
-    printf "BBI bbi-sci Pipeline Log\n\n" > start.log
-    printf "Run started at: \$(date)\n\n" >> start.log
+        Required parameters (specify in your config file):
+            params.output_dir = OUTPUT DIRECTORY       Output directory.
+            params.sample_sheet = SAMPLE_SHEET_PATH    Sample sheet of the format described in the README.
+            params.demux_out = DEMUX OUTPUT DIR        Path to the demux_out folder from the bbi-dmux run.
+            params.level = 3                           2 or 3 level sci?
 
-    printf "***** BEGIN PIPELINE *****: \n\n" >> start.log
-    printf "** Start process 'check_sample_sheet' at: \$(date)\n\n" >> start.log
-    printf "    Process versions:
-        \$(python --version)\n\n" >> start.log
-    printf "    Process command:
-        check_sample_sheet.py
-            --sample_sheet $params.sample_sheet
-            --star_file $params.star_file
-            --level $params.level --rt_barcode_file $params.rt_barcode_file
-            --max_wells_per_samp $params.max_wells_per_sample\n\n" >> start.log
+        Optional parameters (specify in your config file):
+            params.rt_barcode_file = "default"         The path to a custom RT barcode file. If "default", default BBI barcodes will be used.
+            params.max_cores = 16                      The maximum number of cores to use - fewer will be used if appropriate.
+            process.maxForks = 20                      The maximum number of processes to run at the same time on the cluster.
+            process.queue = "trapnell-short.q"         The queue on the cluster where the jobs should be submitted.
+            params.samples = [sample1, sample2]        Add to only run certain samples from trimming on. Default is to run all.
+            params.star_file = PATH/TO/FILE            File with the genome to star maps, similar to the one included with the package.
+            params.gene_file = PATH/TO/FILE            File with the genome to gene model maps, similar to the one included with the package.
+            params.umi_cutoff = 100                    The umi cutoff to be called a cell in matrix output.
+            params.hash_list = false                   Path to a tab-delimited file with at least two columns, first the hash name and second the hash barcode sequence. Default is false to indicate no hashing.
+            params.max_wells_per_sample = 20           The maximum number of wells per sample - if a sample is in more wells, the fastqs will be split then reassembled for efficiency.
+            params.garnett_file = false                Path to a csv with two columns, first is the sample name, and second is a path to the Garnett classifier to be applied to that sample. Default is false - no classification.
+            params.skip_doublet_detect = false         Whether to skip doublet detection, i.e. scrublet - useful for very large datasets.
 
-
-    check_sample_sheet.py --sample_sheet $params.sample_sheet --star_file $params.star_file \
-        --level $params.level --rt_barcode_file $params.rt_barcode_file \
-        --max_wells_per_samp $params.max_wells_per_sample
-
-
-    printf "** End process 'check_sample_sheet' at: \$(date)\n\n" >> start.log
-    cp start.log start.txt
-    """
-
+        Issues? Contact hpliner@uw.edu
+    """.stripIndent()
 }
 
 // Generate a sample list with fixed naming
-samp_file = file(params.sample_sheet)
-def samp_list = []
+def generate_sample_list(samp_file) {
+    def samp_list = []
 
-for (line in samp_file.readLines()) {
-    samp_list.add(line.split(",")[1])
-}
+    for (line in samp_file.readLines()) {
+        samp_list.add(line.split(",")[1])
+    }
 
-samp_list = samp_list.collect{"$it".replaceAll(/\s/, ".").replaceAll(/_/, ".").replaceAll(/-/, ".").replaceAll(/\\//, ".")}
-samp_list.removeElement("Sample.ID")
-if (params.samples != false) {
-    samp_list = samp_list.intersect(params.samples.collect{"$it".replaceAll(/\s/, ".").replaceAll(/_/, ".").replaceAll(/-/, ".").replaceAll(/\\//, ".")})
-}
-
-/*************
-
-Process: trim_fastqs
-
- Inputs:
-    input_fastq - all fastq files from params.demux_out folder
-    logfile - running log
-
- Outputs:
-    trim_out - output folder from trimming - stops here
-    key - sample id
-    name - file id (including lane and split info)
-    trimmed_fastq - trimmed, gzipped fastq
-    logfile - running log
-    log_piece2 - piece of log to be concatenated for full log
-
- Pass through:
-    input_fastq - all fastq files from params.demux_out folder
-
- Summary:
-    Trim fastqs - trim_galore
-    Continue log
-
- Downstream:
-    gather_info
-    process_hashes
-
- Published:
-
- Notes:
-    Only moves forward if sample is in samp_list - where params.samples comes in
-
-*************/
-
-process trim_fastqs {
-    cache 'lenient'
-
-    input:
-        file input_fastq from Channel.fromPath("${params.demux_out}/*.fastq.gz")
-        file logfile from log_check_sample
-
-    output:
-        file "trim_out" into trim_output
-        set val(key), val(name), file("trim_out/*.fq.gz"), file('trim.log'), file('*trim.txt') into trimmed_fastqs
-        set val(key), file(input_fastq) into fastqs_out
-
-    when:
-        !((input_fastq.name.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]) in "Undetermined") && ((input_fastq.name.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]) in samp_list)
-
-    script:
-        name = input_fastq.baseName - ~/.fastq/
-        key = input_fastq.baseName.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]
-
-    """
-    cat ${logfile} > trim.log
-    printf "** Start process 'trim_fastqs' for $input_fastq at: \$(date)\n\n" > piece.log
-    printf "    Process versions:
-        " >> piece.log
-    python --version &>> piece.log
-    printf "        trim_galore \$(trim_galore -v | grep version | awk '{\$1=\$1;print}')
-        cutadapt version \$(cutadapt --version)\n\n" >> piece.log
-
-    printf "    Process command:
-        trim_galore $input_fastq -a AAAAAAAA --three_prime_clip_R1 1
-            --gzip -o ./trim_out/\n
-    Process output:\n" >> piece.log
-
-
-    mkdir trim_out
-    trim_galore $input_fastq \
-        -a AAAAAAAA \
-        --three_prime_clip_R1 1 \
-        --gzip \
-        -o ./trim_out/
-
-
-    cat trim_out/*trimming_report.txt | sed '/Overview of/,/RUN/{//!d}' | sed 's/Overview of removed sequences//' >> piece.log
-    printf "** End process 'trim_fastqs' at: \$(date)\n\n" >> piece.log
-    cp piece.log ${name}_trim.txt
-    cat piece.log >> trim.log
-    """
+    samp_list = samp_list.collect{"$it".replaceAll(/\s/, ".").replaceAll(/_/, ".").replaceAll(/-/, ".").replaceAll(/\\//, ".")}
+    samp_list.removeElement("Sample.ID")
+    // filter out samples defined in sample parameter (if defined)
+    if (params.samples != false) {
+        samp_list = samp_list.intersect(params.samples.collect{"$it".replaceAll(/\s/, ".").replaceAll(/_/, ".").replaceAll(/-/, ".").replaceAll(/\\//, ".")})
+    }
 }
 
 
-/*************
+// TODO: How to save versions of software used
+workflow {
+    // check required options
+    if (params.help || !params.output_dir || !params.sample_sheet || !params.demux_out) {
+        helpMessage()
+        exit 1
+    }
 
-Process: gather_info
+    sample_sheet_file = file(params.sample_sheet)
 
- Inputs:
-    good_sample_sheet - corrected csv sample sheet
-    key - sample id
-    params.star_file
-    params.gene_file
+    check_sample_sheet(sample_sheet_file, star_file, rt_barcode_file)
 
- Outputs:
-    key - sample id
-    star_path - path to star index folder
-    gtf_path - path to gtf info folder
-    star_mem - GB needed for star alignment
+    sample_list = generate_sample_list(sample_sheet_file)
 
- Pass through:
-    name - file id (including lane and split info)
-    trimmed_fastq - trimmed, gzipped fastq
-    log_piece2 - piece of log to be concatenated for full log
-    logfile - running log
+    sample_sheet_file = check_sample_sheet.out
 
- Summary:
-    Gather the star and gtf paths and info for downstream
+    input_fastq = Channel.fromPath("${params.demux_out}/*.fastq.gz")
 
- Downstream:
-    split_bam
-    make_matrix
-    align_reads
+    // Trim fastqs (using trim galore)
+    trim_fastqs(input_fastq, sample_list)
 
- Published:
+    trimmed_fastq = trim_fastqs.out.trimmed_fastq
+    fastqs_out = trim_fastqs.out.fastqs_out
 
- Notes:
-   o  the 'spec' variable uses the awk split() function to remove
-      '_fq_part', which is added when very large fastq files are
-      split. The gsub() function removes unacceptable characters
-      from the sample names.
+    // Gather the star and gtf paths and info for downstream
+    gather_info(sample_sheet_file, trimmed_fastq)
+    align_prepped = gather_info.out.align_prepped
+    gtf_info = gather_info.out.gtf_info
 
-*************/
+    if (params.hash_list) {
+        // Group fastqs for finding hash barcodes
+        grouped_fastqs = fastqs_out.groupTuple()
+        process_hashes(grouped_fastqs)
+    }
 
-process gather_info {
-    cache 'lenient'
+    align_reads(align_prepped)
 
-    input:
-        file good_sample_sheet
-        set val(key), val(name), file(trimmed_fastq), file(logfile), file(log_piece2) from trimmed_fastqs
+    aligned_bams = align_reads.out.aligned_bams
 
-    output:
-        set val(key), val(name), env(star_path), env(star_mem), file(trimmed_fastq), file(logfile), file(log_piece2) into align_prepped
-        set val(key), env(gtf_path) into gtf_info
-        set val(key), env(gtf_path) into gtf_info2
+    sort_and_filter(aligned_bams)
 
-    """
+    sorted_bams = sort_and_filter.out.sorted_bams
 
-    spec=`sed 's/ *\$//g' good_sample_sheet.csv | awk 'BEGIN {FS=",";OFS=","}{split(\$2,a,"_fq_part");gsub("[_ /-]", ".", a[1]);print(\$1, a[1], \$3)}' | awk 'BEGIN {FS=","}; \$2=="$key" {print \$3}' | uniq`
-    star_mem=`awk -v var="\$spec" '\$1==var {print \$3}' $params.star_file | uniq`
-    star_path=`awk -v var="\$spec" '\$1==var {print \$2}' $params.star_file | uniq`
-    gtf_path=`awk -v var="\$spec" '\$1==var {print \$2}' $params.gene_file | uniq`
+    // TODO: combine logs
 
-    """
-}
+    to_merge = sorted_bams.groupTuple()
+    merge_bams(to_merge)
 
+    sample_bams = merge_bams.out.sample_bams
+    assign_prepped = sample_bams.join(gtf_info)
 
-/*************
+    split_bam(align_prepped)
 
-Process: process_hashes
+    split_bams = split_bam.out.split_bams.flatten()
 
- Inputs:
-    key - sample id
-    input_fastq - all fastq files from params.demux_out folder
-    params.hash_list
+    remove_dups_assign_genes(split_bams)
 
- Outputs:
-    hash_log - log of the hash information
-    hash_mtx - MatrixMarket matrix of hash information
-    hash_cell - Cell info for matrix of hash information
-    hash_hash - Hash info for matrix of hash information
-
- Pass through:
-
- Summary:
-    Collect and process hash barcodes - process_hashes.py
-
- Downstream:
-
- Published:
-    hash_mtx - MatrixMarket matrix of hash information
-    hash_cell - Cell info for matrix of hash information
-    hash_hash - Hash info for matrix of hash information
-
- Notes:
-    Only when params.hash = true
-
-*************/
-
-// Group fastqs for finding hash barcodes
-fastqs_out
-    .groupTuple()
-    .set { for_hash }
-
-save_hash_cell = {params.output_dir + "/" + it - ~/.hashumis_cells.txt/ + "/" + it}
-save_hash_hash = {params.output_dir + "/" + it - ~/.hashumis_hashes.txt/ + "/" + it}
-save_hash_mtx = {params.output_dir + "/" + it - ~/.hashumis.mtx/ + "/" + it}
-
-process process_hashes {
-    cache 'lenient'
-    publishDir path: "${params.output_dir}/", saveAs: save_hash_cell, pattern: "*hashumis_cells.txt", mode: 'copy'
-    publishDir path: "${params.output_dir}/", saveAs: save_hash_hash, pattern: "*hashumis_hashes.txt", mode: 'copy'
-    publishDir path: "${params.output_dir}/", saveAs: save_hash_mtx, pattern: "*.mtx", mode: 'copy'
-
-    input:
-        set key, file(input_fastq) from for_hash
-
-    output:
-        file("*hash.log") into hash_logs
-        set file("*mtx"), file("*hashumis_cells.txt"), file("*hashumis_hashes.txt") into hash_mats
-
-    when:
-        params.hash_list != false
-
-    """
-    process_hashes.py --hash_sheet $params.hash_list \
-        --fastq <(zcat $input_fastq) --key $key
-
-    """
-}
-
-
-/*************
-
-Process: align_reads
-
- Inputs:
-    name - file id (including lane and split info)
-    star_path - path to star index folder
-    star_mem - GB needed for star alignment
-    trimmed_fastq - trimmed, gzipped fastq
-    logfile - running log
-    cores_align - number of cores to use
-
- Outputs:
-    align_out - folder of all alignment output - stops here
-    name - file id (including lane and split info)
-    aligned_bam - bam output from star alignment
-    logfile - running log
-    log_piece3 - piece of log to be concatenated for full log
-
- Pass through:
-    key - sample id
-    log_piece2 - piece of log to be concatenated for full log
-
- Summary:
-    Align reads to genome using STAR
-
- Downstream:
-    sort_and_filter
-
- Published:
-
- Notes:
-
-*************/
-
-// Cores for alignment set at 8 unless limit is lower
-cores_align = params.max_cores < 8 ? params.max_cores : 8
-
-process align_reads {
-    cache 'lenient'
-    memory { star_mem.toInteger()/cores_align + " GB" }
-    cpus cores_align
-
-    input:
-        set val(key), val(name), val(star_path), val(star_mem), file(trimmed_fastq), file(logfile), file(log_piece2) from align_prepped
-
-    output:
-        file "align_out" into align_output
-        set val(key), val(name), file("align_out/*Aligned.out.bam"), file('align.log'), file(log_piece2), file("*align.txt") into aligned_bams
-
-    """
-    cat ${logfile} > align.log
-    printf "** Start process 'align_reads' for $trimmed_fastq at: \$(date)\n\n" > piece.log
-    printf "    Process versions:
-        \$(STAR --version)\n\n" >> piece.log
-
-    printf "    Process command:
-        STAR --runThreadN $cores_align --genomeDir $star_path
-            --readFilesIn $trimmed_fastq --readFilesCommand zcat
-            --outFileNamePrefix ./align_out/${name} --outSAMtype BAM Unsorted
-            --outSAMmultNmax 1 --outSAMstrandField intronMotif\n
-
-    Reference genome information:
-      \$(grep fastq_url $star_path/../*gsrc/record.out | awk '{\$1=\$2=""; print \$0}')
-        FASTA download date: \$(grep fastq_download_date $star_path/../*gsrc/record.out | awk '{\$1=\$2=""; print \$0}')
-        Non REF sequences removed.
-
-      \$(grep gtf_url $star_path/../*gsrc/record.out | awk '{\$1=\$2=""; print \$0}')
-        GTF download date: \$(grep gtf_download_date $star_path/../*gsrc/record.out | awk '{\$1=\$2=""; print \$0}')
-        \$(grep gtf_include_biotypes $star_path/record.out | awk '{\$1=\$2=""; print \$0}')
-
-    Process output:\n" >> piece.log
-
-
-    mkdir align_out
-    STAR \
-        --runThreadN $cores_align \
-        --genomeDir $star_path \
-        --readFilesIn $trimmed_fastq \
-        --readFilesCommand zcat \
-        --outFileNamePrefix ./align_out/${name}  \
-        --outSAMtype BAM Unsorted \
-        --outSAMmultNmax 1 \
-        --outSAMstrandField intronMotif
-
-
-    cat align_out/*Log.final.out >> piece.log
-
-    printf "\n** End process 'align_reads' at: \$(date)\n\n" >> piece.log
-
-    cp piece.log ${name}_align.txt
-    cat piece.log >> align.log
-
-    """
+    for_cat_dups = remove_dups_assign_genes.out
+        .groupTuple()
+        .join(split_bam_log)
+        .join(read_count)
 
 }
 
 
-/*************
-
-Process: sort_and_filter
-
- Inputs:
-    name - file id (including lane and split info)
-    aligned_bam - bam output from star alignment
-    logfile - running log
-    cores_sf - number of cores to use
-
- Outputs:
-    name - file id (including lane and split info)
-    sorted_bam - sorted and quality filtered bam
-    log_piece4 - piece of log to be concatenated for full log
-
- Pass through:
-    key - sample id
-    log_piece2 - piece of log to be concatenated for full log
-    log_piece3 - piece of log to be concatenated for full log
-
- Summary:
-    Use samtools to filter for read quality 30 and sort bam
-
- Downstream:
-    merge_bams
-    combine_logs
-
- Published:
-
- Notes:
-
-*************/
-
-// Cores for sort and filter set at 10 unless limit is lower
-cores_sf = params.max_cores < 10 ? params.max_cores : 10
-
-process sort_and_filter {
-    cache 'lenient'
-    cpus cores_sf
-
-    input:
-        set val(key), val(name), file(aligned_bam), file(logfile), file(log_piece2), file(log_piece3) from aligned_bams
-
-    output:
-        set val(key), file("*.bam") into sorted_bams
-        set val(key), file(log_piece2), file(log_piece3), file("*_sf.txt") into log_pieces
-
-    """
-    printf "** Start process 'sort_and_filter' for $aligned_bam at: \$(date)\n\n" > ${name}_piece.log
-    printf "    Process versions:
-        \$(samtools --version | tr '\n' ' ')\n\n" >> ${name}_piece.log
-    printf "    Process command:
-        samtools view -bh -q 30 -F 4 '$aligned_bam'
-            | samtools sort -@ $cores_sf - > '${name}.bam'\n\n" >> ${name}_piece.log
-
-
-    samtools view -bh -q 30 -F 4 "$aligned_bam" \
-        | samtools sort -@ $cores_sf - \
-        > "${name}.bam"
-
-
-    printf "    Process stats:
-        sort_and_filter starting reads: \$(samtools view -c $aligned_bam)
-        sort_and_filter ending reads  : \$(samtools view -c ${name}.bam)\n\n" >> ${name}_piece.log
-    printf "** End process 'sort_and_filter' at: \$(date)\n\n" >> ${name}_piece.log
-
-    cp ${name}_piece.log ${name}_sf.txt
-
-    """
-}
-
-
-/*************
-
-Process: combine_logs
-
- Inputs:
-    log_piece1 - piece of log to be concatenated for full log
-    log_piece2 - piece of log to be concatenated for full log
-    log_piece3 - piece of log to be concatenated for full log
-    log_piece4 - piece of log to be concatenated for full log
-
- Outputs:
-    logfile - concatenated running log
-
- Pass through:
-    key - sample id
-
- Summary:
-    Combine the log pieces from the first steps in the correct order
-
- Downstream:
-    merge_bams
-
- Published:
-
- Notes:
-
-*************/
-
-log_pieces
-    .groupTuple()
-    .set { logs_to_combine }
-
-process combine_logs {
-    cache 'lenient'
-
-    input:
-        file log_piece1
-        set val(key), file(log_piece2), file(log_piece3), file(log_piece4) from logs_to_combine
-
-    output:
-        set val(key), file("*_pre.log") into log_premerge
-
-    """
-
-    cat $log_piece1 $log_piece2 $log_piece3 $log_piece4 > ${key}_pre.log
-
-    """
-}
-
-
-/*************
-
-Process: merge_bams
-
- Inputs:
-    key - sample id
-    logfile - running log
-    sorted_bam - sorted and quality filtered bam
-
- Outputs:
-    key - sample id
-    merged_bam - sorted and quality filtered bam merged by sample
-    read_count - file with the total reads listed
-    logfile - running log
-
- Pass through:
-
- Summary:
-    Use samtools to merge bams from the same sample
-    Count the number of reads in the sample
-
- Downstream:
-    split_bam
-    calc_duplication_rate
-
- Published:
-    merged_bam - sorted and quality filtered bam merged by sample
-
- Notes:
-
-*************/
-
-cores_merge = params.max_cores < 8 ? params.max_cores : 8
-
-sorted_bams
-    .groupTuple()
-    .set { bams_to_merge }
-
-log_premerge.join(bams_to_merge).set{for_merge_bams}
-
-save_bam = {params.output_dir + "/" + it - ~/.bam/ + "/" + it}
-
-process merge_bams {
-    cache 'lenient'
-    cpus cores_merge
-    publishDir path: "${params.output_dir}/", saveAs: save_bam, pattern: "*.bam", mode: 'copy'
-
-    input:
-        set key, file(logfile), file(sorted_bam) from for_merge_bams
-
-    output:
-        set key, file("*.bam"), file("merge_bams.log") into sample_bams
-        set key, file("*.read_count.txt") into read_count
-
-    """
-    cat ${logfile} > merge_bams.log
-    printf "** Start process 'merge_bams' at: \$(date)\n\n" >> merge_bams.log
-    printf "    Process versions:
-        \$(samtools --version | tr '\n' ' ')\n\n" >> merge_bams.log
-    printf "    Process command:
-        samtools merge ${key}.bam $sorted_bam\n\n" >> merge_bams.log
-
-
-    samtools merge -@ $cores_merge ${key}.bam $sorted_bam
-
-
-    printf "${key}\t\$(samtools view -c ${key}.bam)" > ${key}.read_count.txt
-
-    printf "** End process 'merge_bams' at: \$(date)\n\n" >> merge_bams.log
-    """
-}
-
-
-/*************
-
-Process: split_bam
-
- Inputs:
-    merged_bam - sorted and quality filtered bam merged by sample
-    logfile - running log
-
- Outputs:
-    merged_bam - sorted and quality filtered bam merged by sample - stops here
-    split_bam - bams split by reference (chromosome)
-
- Pass through:
-    key - sample id
-    gtf_path - path to gtf info folder
-    logfile - running log
-
- Summary:
-    Use bamtools split to split bam by reference (chromosome) for speed
-    Combine the small non-chromosomal references to keep file number reasonable
-
- Downstream:
-    merge_assignment
-    remove_dups_assign_genes
-
- Published:
-
- Notes:
-    Potential improvement: find a way to split bams into more evenly sized chunks
-
-*************/
-
-sample_bams.join(gtf_info).set{assign_prepped}
-
-process split_bam {
-    cache 'lenient'
-
-    input:
-        set key, file(merged_bam), file(logfile), val(gtf_path) from assign_prepped
-
-    output:
-        set key, file("split_bams/*.bam"), val(gtf_path) into split_bams mode flatten
-        set key, file("remove_dups.log") into split_bam_log
-        file merged_bam into output
-
-    """
-    cat ${logfile} > remove_dups.log
-    printf "** Start processes 'remove duplicates, assign_genes, merge_assignment' at: \$(date)\n\n" >> remove_dups.log
-    printf "    Process versions:
-        \$(bedtools --version)
-        \$(samtools --version | tr '\n' ' ')
-        \$(bamtools --version | grep bamtools)
-        \$(python --version)\n\n" >> remove_dups.log
-
-    echo '    Process command:
-        mkdir split_bams
-        bamtools split -in $merged_bam -reference -stub split_bams/split
-
-        rmdup.py --bam in_bam --output_bam out.bam
-
-        samtools view -c out.bam > split_bam_umi_count.txt
-
-        bedtools bamtobed -i out.bam -split
-                | sort -k1,1 -k2,2n -k3,3n -S 5G
-                > "in_bam.bed"
-
-        bedtools map
-            -a in_bam.bed
-            -b exon_index
-            -nonamecheck -s -f 0.95 -c 7 -o distinct -delim "|"
-        | bedtools map
-            -a - -b gene_index
-            -nonamecheck -s -f 0.95 -c 4 -o distinct -delim "|"
-        | sort -k4,4 -k2,2n -k3,3n -S 5G
-        | datamash
-            -g 4 first 1 first 2 last 3 first 5 first 6 collapse 7 collapse 8
-        | assign-reads-to-genes.py gene_index
-        | awk \$3 == "exonic" || \$3 == "intronic" {{
-                split(\$1, arr, "|")
-                printf "%s_%s_%s\t%s\t%s\\n", arr[3], arr[4], arr[5], \$2, \$3
-        }}
-        | sort -k2,2 -k1,1 -S 5G > in_bam.txt
-
-        cat logfile > merge_assignment.log
-        cat split_bed > key.bed
-        sort -m -k1,1 -k2,2 split_gene_assign > key_ga.txt
-
-        datamash -g 1,2 count 2 < key_ga.txt
-        | gzip > key.gz
-        ' >> remove_dups.log
-
-    printf "    Process stats:
-        remove_dups starting reads: \$(samtools view -c $merged_bam)" >> remove_dups.log
-
-
-    mkdir split_bams
-    bamtools split -in $merged_bam -reference -stub split_bams/split
-    cd split_bams
-    if [[ \$(ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$") ]]; then
-        ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$" | samtools merge split.REFnonstand.bam -b -
-        ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$" | xargs -d"\\n" rm
-        mv split.REFnonstand.bam split.REF_nonstand.bam
-    fi
-    """
-
-}
-
-
-/*************
-
-Process: remove_dups_assign_genes
-
- Inputs:
-    split_bam - bams split by reference (chromosome)
-    gtf_path - path to gtf info folder
-    split_umi_count - file with count of umis in split bam
-
- Outputs:
-    split_gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
-    split_bed - deduplicated sorted bed file
-
- Pass through:
-    key - sample id
-
- Summary:
-    1. Remove duplicate reads using rmdup.py
-    2. Use bedtools map to map the dedupped bed file to all exons with options:
-        -s forced strandedness
-        -f 0.95 95% of read must overlap exon
-        -c 7 map the name of the gene
-        -o distinct concatenate list of gene names
-        -delim "|" custom delimiter
-        -nonamecheck Don't error if there are different naming conventions for the chromosomes
-    3. Use bedtools map to map output to gene index
-        -s forced strandedness
-        -f 0.95 95% of read must overlap exon
-        -c 4 map the name of the cell name
-        -o distinct concatenate list of gene names
-        -delim "|" custom delimiter
-        -nonamecheck Don't error if there are different naming conventions for the chromosomes
-    4. Sort and collapse
-    5. Run assign-reads-to-genes.py to deal with exon v intron
-
- Downstream:
-    merge_assignment
-
- Published:
-
- Notes:
-    Potential speed up - remove non-genic reads before sort?
-
-*************/
-
-process remove_dups_assign_genes {
-    cache 'lenient'
-
-    input:
-        set key, file(split_bam), val(gtf_path) from split_bams
-
-    output:
-        set key, file("*.bed"), file("*_ga.txt"), file("*_umi_count.txt") into remove_dup_part_out
-
-    """
-    rmdup.py --bam $split_bam --output_bam out.bam
-
-    samtools view -c out.bam > ${split_bam}_umi_count.txt
-
-    bedtools bamtobed -i out.bam -split \
-            | sort -k1,1 -k2,2n -k3,3n -S 5G \
-            > "${split_bam}.bed"
-
-    bedtools map \
-        -a "${split_bam}.bed" \
-        -b "${gtf_path}/latest.exons.bed" \
-        -nonamecheck -s -f 0.95 -c 7 -o distinct -delim '|' \
-    | bedtools map \
-        -a - -b "${gtf_path}/latest.genes.bed" \
-        -nonamecheck -s -f 0.95 -c 4 -o distinct -delim '|' \
-    | sort -k4,4 -k2,2n -k3,3n -S 5G\
-    | datamash \
-        -g 4 first 1 first 2 last 3 first 5 first 6 collapse 7 collapse 8 \
-    | assign-reads-to-genes.py "${gtf_path}/latest.genes.bed" \
-    | awk '\$3 == "exonic" || \$3 == "intronic" {{
-            split(\$1, arr, "|")
-            printf "%s_%s_%s\t%s\t%s\\n", arr[3], arr[4], arr[5], \$2, \$3
-    }}' \
-    | sort -k1,1 -k2,2 -S 5G > "${split_bam}_ga.txt"
-
-    """
-
-}
-
-/*************
-
-Process: merge_assignment
-
- Inputs:
-    key - sample id
-    split_gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
-    split_bed - deduplicated sorted bed file
-    logfile - running log
-    split_umi_count - file with count of umis in split bam
-    read_count - file with the total reads listed
-
- Outputs:
-    key - sample id
-    gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
-    cell_gene_count - gzipped text file with a count of cell, gene pairs
-    logfile - running log
-    dup_stats - file with duplication rate information for the sample
-
- Pass through:
-
- Summary:
-    merge bed files by sample
-    merge gene assignment files by sample
-    make cell gene count file
-    calculate duplication rate
-
- Downstream:
-    count_umis_by_sample
-    reformat_qc
-
- Published:
-
- Notes:
-
-*************/
-
-remove_dup_part_out
-    .groupTuple()
-    .join(split_bam_log)
-    .join(read_count)
-    .set { for_cat_dups }
-
-process merge_assignment {
-    cache 'lenient'
-
-    input:
-        set key, file(split_bed), file(split_gene_assign), file(split_umi_count), file(logfile), file(read_count) from for_cat_dups
-
-    output:
-        set key, file("*.gz"), file("*_ga.txt"), file("merge_assignment.log") into merge_assignment_out
-        set val(key), file("*duplication_rate_stats.txt") into duplication_rate_out
-        file "*.bed"  into temp_bed
-
-    """
-    cat ${logfile} > merge_assignment.log
-    cat $split_bed > "${key}.bed"
-    sort -m -k1,1 -k2,2 $split_gene_assign > "${key}_ga.txt"
-
-    datamash -g 1,2 count 2 < "${key}_ga.txt" \
-    | gzip > "${key}.gz"
-
-
-    umi=`cat $split_umi_count | awk '{ sum += \$1 } END { print sum }'`
-    read=`cut -f2 $read_count`
-    perc=\$(echo "100.0 * (1 - \$umi/\$read)" | bc -l)
-    printf "%-18s   %10d    %10d    %7.1f\\n" $key \$read \$umi \$perc \
-    >"${key}.duplication_rate_stats.txt"
-
-    printf "
-        remove_dups ending reads  : \$(wc -l ${key}.bed | awk '{print \$1;}')\n\n
-        Read assignments:\n\$(awk '{count[\$3]++} END {for (word in count) { printf "            %-20s %10i\\n", word, count[word]}}' ${key}_ga.txt)\n\n" >> merge_assignment.log
-
-    printf "** End processes 'remove duplicates, assign_genes, merge_assignment' at: \$(date)\n\n" >> merge_assignment.log
-
-    """
-}
 
 
 /*************
@@ -1856,62 +1093,4 @@ process zip_up_log_data {
 
 workflow.onComplete {
 	println ( workflow.success ? "Done! Saving output" : "Oops .. something went wrong" )
-}
-
-
-/*************
-Groovy functions
-*************/
-
-def checkNextflowVersion( Integer minMajorVersion, Integer minMinorVersion )
-{
-  def sVersion = nextflow.version.toString()
-  def aVersion = sVersion.split( /[.]/ )
-  def majorVersion = aVersion[0].toInteger()
-  def minorVersion = aVersion[1].toInteger()
-  if( majorVersion < minMajorVersion || ( majorVersion == minMajorVersion && minorVersion < minMinorVersion ) )
-  {
-    def serr = "This pipeline requires Nextflow version at least %s.%s: you have version %s."
-    println()
-    println( '****  ' + String.format( serr, minMajorVersion, minMinorVersion, sVersion ) + '  ****' )
-    println()
-    System.exit( -1 )
-    /*
-    ** An exception produces an exceptionally verbose block of confusing text. I leave
-    ** the command here in case the println() output is obscured by fancy Nextflow tables.
-    **
-    ** throw new Exception( String.format( serr, minMajorVersion, minMinorVersion, sVersion ) )
-    */
-  }
-  return( 0 )
-}
-
-
-/*
-** getOSInfo()
-**
-** Purpose: get information about the operating system.
-**
-** Returns:
-**    list of strings with OS name, OS distribution, OS distribution release
-**
-** Notes:
-**   o  limited to Linux operating systems at this time
-*/
-def getOSInfo()
-{
-  def osName = System.properties['os.name']
-  def osDistribution
-  def osRelease
-  if( osName == 'Linux' )
-  {
-    def proc
-    proc = "lsb_release -a".execute() | ['awk', 'BEGIN{FS=":"}{if($1=="Distributor ID"){print($2)}}'].execute()
-    proc.waitFor()
-    osDistribution = proc.text.trim()
-    proc = "lsb_release -a".execute() | ['awk', 'BEGIN{FS=":"}{if($1=="Release"){print($2)}}'].execute()
-    proc.waitFor()
-    osRelease = proc.text.trim()
-  }
-  return( [ osName, osDistribution, osRelease ] )
 }
