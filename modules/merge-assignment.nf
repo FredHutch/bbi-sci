@@ -38,35 +38,16 @@ Process: merge_assignment
 
 
 process merge_assignment {
+    container "${params.container__tools}"
 
     input:
-        tuple val(key), file(split_bed), file(split_gene_assign), file(split_umi_count), file(logfile), file(read_count) from for_cat_dups
+        tuple val(key), file(split_bed), file(split_gene_assign), file(split_umi_count), file(logfile), file(read_count)
 
     output:
-        tuple val(key), file("*.gz"), file("*_ga.txt"), file("merge_assignment.log") into merge_assignment_out
-        tuple val(key), file("*duplication_rate_stats.txt") into duplication_rate_out
-        file "*.bed"  into temp_bed
+        tuple val(key), file("*.gz"), file("*_ga.txt"), file("merge_assignment.log"), emit: merge_assignment_out
+        tuple val(key), file("*duplication_rate_stats.txt"), emit: duplication_rate_out
+        file "*.bed", emit: temp_bed
 
-    """
-    cat ${logfile} > merge_assignment.log
-    cat $split_bed > "${key}.bed"
-    sort -m -k1,1 -k2,2 $split_gene_assign > "${key}_ga.txt"
-
-    datamash -g 1,2 count 2 < "${key}_ga.txt" \
-    | gzip > "${key}.gz"
-
-
-    umi=`cat $split_umi_count | awk '{ sum += \$1 } END { print sum }'`
-    read=`cut -f2 $read_count`
-    perc=\$(echo "100.0 * (1 - \$umi/\$read)" | bc -l)
-    printf "%-18s   %10d    %10d    %7.1f\\n" $key \$read \$umi \$perc \
-    >"${key}.duplication_rate_stats.txt"
-
-    printf "
-        remove_dups ending reads  : \$(wc -l ${key}.bed | awk '{print \$1;}')\n\n
-        Read assignments:\n\$(awk '{count[\$3]++} END {for (word in count) { printf "            %-20s %10i\\n", word, count[word]}}' ${key}_ga.txt)\n\n" >> merge_assignment.log
-
-    printf "** End processes 'remove duplicates, assign_genes, merge_assignment' at: \$(date)\n\n" >> merge_assignment.log
-
-    """
+    script:
+        template "merge_assignment.sh"
 }
