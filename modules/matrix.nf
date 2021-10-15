@@ -41,19 +41,19 @@ save_cell_anno = {params.output_dir + "/" + it - ~/.cell_annotations.txt/ + "/ce
 save_gene_anno = {params.output_dir + "/" + it - ~/.gene_annotations.txt/ + "/gene_annotations.txt"}
 
 process make_matrix {
-    container "${params.container__tools}"
+   container "${params.container__tools}"
 
-    publishDir path: "${params.output_dir}/", saveAs: save_umi, pattern: "*umi_counts.mtx", mode: 'copy'
-    publishDir path: "${params.output_dir}/", saveAs: save_cell_anno, pattern: "*cell_annotations.txt", mode: 'copy'
-    publishDir path: "${params.output_dir}/", saveAs: save_gene_anno, pattern: "*gene_annotations.txt", mode: 'copy'
+   publishDir path: "${params.output_dir}/", saveAs: save_umi, pattern: "*umi_counts.mtx", mode: 'copy'
+   publishDir path: "${params.output_dir}/", saveAs: save_cell_anno, pattern: "*cell_annotations.txt", mode: 'copy'
+   publishDir path: "${params.output_dir}/", saveAs: save_gene_anno, pattern: "*gene_annotations.txt", mode: 'copy'
 
-    input:
-        tuple val(key), file(cell_gene_count), file(logfile), val(gtf_path)
+   input:
+      tuple val(key), file(cell_gene_count), file(logfile), val(gtf_path)
 
-    output:
-        tuple val(key), file("*cell_annotations.txt"), file("*umi_counts.mtx"), file("*gene_annotations.txt"), val(gtf_path), file("make_matrix.log"), emit: mat_output
+   output:
+      tuple val(key), file("*cell_annotations.txt"), file("*umi_counts.mtx"), file("*gene_annotations.txt"), val(gtf_path), file("make_matrix.log")
 
-    script:
-        template "make_matrix.sh"
+   script:
+      template "make_matrix.sh"
 
 }

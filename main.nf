@@ -16,6 +16,7 @@ params.container__trim_galore = genome_tools_container
 params.container__star = "quay.io/biocontainers/star:2.6.1d--0"
 params.container__samtools = "quay.io/biocontainers/samtools:1.9"
 params.container__Rscript = genome_tools_container
+params.container__basic = "ubuntu:21.04"
 
 // Parse input parameters
 params.help = false
@@ -23,7 +24,7 @@ params.samples = false
 params.star_file = DEFAULT
 params.gene_file = DEFAULT
 params.umi_cutoff = 100
-params.rt_barcode_file=DEFAULT
+params.rt_barcode_file = DEFAULT
 params.max_cores = 16
 params.hash_list = false
 params.max_wells_per_sample = 20
@@ -46,6 +47,71 @@ include {
 include {
     process_hashes
 } from './modules/hash'
+
+include {
+    gather_info
+} from './modules/misc'
+
+include {
+    align_reads
+} from './modules/align'
+
+include {
+    sort_and_filter
+} from './modules/sort'
+
+include {
+    merge_bams
+} from './modules/merge'
+
+include {
+    split_bam
+} from './modules/split'
+
+include {
+    remove_dups_assign_genes
+} from './modules/remove_dups'
+
+include {
+    merge_assignment
+} from './modules/merge-assignment'
+
+include {
+    count_umis_by_sample
+} from './modules/count_umi'
+
+include {
+    make_matrix
+} from './modules/matrix'
+
+include {
+    make_cds
+} from './modules/cds'
+
+include {
+    apply_garnett
+} from './modules/garnett'
+
+include {
+    run_scrublet
+} from './modules/scrublet'
+
+include {
+    reformat_qc
+    generate_qc_metrics
+    zip_up_sample_stats
+    calc_cell_totals
+    collapse_collision
+} from './modules/qc'
+
+include {
+    generate_dashboard
+} from './modules/dashboard'
+
+include {
+    finish_log
+    zip_up_log_data
+} from './modules/log'
 
 def helpMessage() {
     log.info"""
@@ -86,7 +152,7 @@ def helpMessage() {
 }
 
 // Generate a sample list with fixed naming
-def generate_sample_list(samp_file) {
+def generateSampleList(samp_file) {
     def samp_list = []
 
     for (line in samp_file.readLines()) {
@@ -96,8 +162,23 @@ def generate_sample_list(samp_file) {
     samp_list = samp_list.collect{"$it".replaceAll(/\s/, ".").replaceAll(/_/, ".").replaceAll(/-/, ".").replaceAll(/\\//, ".")}
     samp_list.removeElement("Sample.ID")
     // filter out samples defined in sample parameter (if defined)
-    if (params.samples != false) {
+    if (params.samples) {
         samp_list = samp_list.intersect(params.samples.collect{"$it".replaceAll(/\s/, ".").replaceAll(/_/, ".").replaceAll(/-/, ".").replaceAll(/\\//, ".")})
+        println "Using samples: ${samp_list}"
+    }
+    return samp_list
+}
+
+def getRtBarcodeFile() {
+    if (params.rt_barcode_file == DEFAULT) {
+        if (params.level == 2) {
+            return file(default_rt2_barcode_file)
+        }
+        if (params.level == 3) {
+            return file(default_rt3_barcode_file)
+        }
+    } else {
+        return file(params.rt_barcode_file)
     }
 }
 
@@ -111,14 +192,17 @@ workflow {
     }
 
     sample_sheet_file = file(params.sample_sheet)
+    star_file = params.star_file == DEFAULT ? file(default_star_file) : file(params.star_file)
+    gene_file = params.gene_file == DEFAULT ? file(default_gene_file) : file(params.gene_file)
+    rt_barcode_file = getRtBarcodeFile()
+
+    input_fastq = Channel.fromPath("${params.demux_out}/*.fastq.gz", checkIfExists: true)
+    input_fastq.ifEmpty("No fastq files found in ${params.demux_out}")
+
+    sample_list = generateSampleList(sample_sheet_file)
 
     check_sample_sheet(sample_sheet_file, star_file, rt_barcode_file)
-
-    sample_list = generate_sample_list(sample_sheet_file)
-
     sample_sheet_file = check_sample_sheet.out
-
-    input_fastq = Channel.fromPath("${params.demux_out}/*.fastq.gz")
 
     // Trim fastqs (using trim galore)
     trim_fastqs(input_fastq, sample_list)
@@ -127,9 +211,11 @@ workflow {
     fastqs_out = trim_fastqs.out.fastqs_out
 
     // Gather the star and gtf paths and info for downstream
-    gather_info(sample_sheet_file, trimmed_fastq)
+    gather_info(sample_sheet_file, trimmed_fastq, star_file, gene_file)
     align_prepped = gather_info.out.align_prepped
     gtf_info = gather_info.out.gtf_info
+    align_prepped.view()
+    gtf_info.view()
 
     if (params.hash_list) {
         // Group fastqs for finding hash barcodes
@@ -139,79 +225,85 @@ workflow {
 
     align_reads(align_prepped)
 
-    aligned_bams = align_reads.out.aligned_bams
+    // aligned_bams = align_reads.out.aligned_bams
 
-    sort_and_filter(aligned_bams)
+    // sort_and_filter(aligned_bams)
 
-    sorted_bams = sort_and_filter.out.sorted_bams
+    // sorted_bams = sort_and_filter.out.sorted_bams
 
-    // TODO: combine logs
+    // // TODO: combine logs
 
-    to_merge = sorted_bams.groupTuple()
-    merge_bams(to_merge)
+    // to_merge = sorted_bams.groupTuple()
+    // merge_bams(to_merge)
 
-    sample_bams = merge_bams.out.sample_bams
-    assign_prepped = sample_bams.join(gtf_info)
+    // sample_bams = merge_bams.out.sample_bams
+    // assign_prepped = sample_bams.join(gtf_info)
 
-    split_bam(align_prepped)
+    // split_bam(align_prepped)
 
-    split_bams = split_bam.out.split_bams.flatten()
+    // split_bams = split_bam.out.split_bams.flatten()
 
-    remove_dups_assign_genes(split_bams)
+    // remove_dups_assign_genes(split_bams)
 
-    for_cat_dups = remove_dups_assign_genes.out
-        .groupTuple()
-        .join(split_bam_log)
-        .join(read_count)
+    // for_cat_dups = remove_dups_assign_genes.out
+    //     .groupTuple()
+    //     .join(split_bam.out.split_bam_log)
+    //     .join(merge_bams.out.read_count)
     
-    merge_assignment(for_cat_dups)
+    // merge_assignment(for_cat_dups)
 
-    merge_assignment_out = merge_assignment.out.merge_assignment_out
+    // merge_assignment_out = merge_assignment.out.merge_assignment_out
 
-    count_umis_by_sample(merge_assignment_out)
+    // count_umis_by_sample(merge_assignment_out)
 
-    make_matrix_prepped = ubss_out.join(gtf_info)
+    // make_matrix_prepped = count_umis_by_sample.out.ubss_out.join(gtf_info)
 
-    make_matrix(make_matrix_prepped)
-    matrix_out = make_matrix.out.cds_out
+    // make_matrix(make_matrix_prepped)
 
-    make_cds(matrix_out)
+    // make_cds(make_matrix.out)
     
-    apply_garnett(make_cds.out.cds_out)
+    // apply_garnett(make_cds.out.cds_out)
 
-    run_scrublet(apply_garnett.out)
+    // run_scrublet(apply_garnett.out)
 
-    reformat_qc_in = run_scrublet.out.scrublet_out.join(duplication_rate_out)
-    reformat_qc(reformat_qc_in)
+    // reformat_qc_in = run_scrublet.out.scrublet_out.join(merge_assignment.out.duplication_rate)
+    // reformat_qc(reformat_qc_in)
 
-    rscrub_out = reformat_qc.out.rscrub_out
-    sample_stats = reformat_qc.out.sample_stats.collect()
-    collision = reformat_qc.out.collision.collect()
+    // sample_stats = reformat_qc.out.sample_stats.collect()
+    // collision = reformat_qc.out.collision.collect()
+    // for_gen_qc = reformat_qc.out.rscrub.join(count_umis_by_sample.out.umis_per_cell)
 
-    for_gen_qc = rscrub_out.join(umis_per_cell)
-    generate_qc_metrics(for_gen_qc)
+    // generate_qc_metrics(for_gen_qc)
 
-    zip_up_sample_stats()
+    // zip_up_sample_stats(sample_stats)
 
-    cell_qcs = make_cds.out.cell_qcs.collect()
+    // cell_qcs = make_cds.out.cell_qcs.collect()
 
-    calc_cell_totals(cell_qcs)
+    // calc_cell_totals(cell_qcs)
 
-    collapse_collision(collision)
+    // collapse_collision(collision)
 
-    generate_dashboard(
-        zip_up_sample_stats.out
-        calc_cell_totals.out
-        collapse_collision.out,
-        generate_qc_metrics.out.qc_plots.collect(),
-        run_scrublet.out.scrub_pngs.collect()
-    )
+    // skeleton_dash = file("$baseDir/bin/skeleton_dash")
+    // generate_dashboard(
+    //     zip_up_sample_stats.out,
+    //     calc_cell_totals.out,
+    //     collapse_collision.out,
+    //     generate_qc_metrics.out.qc_plots.collect(),
+    //     run_scrublet.out.scrub_pngs.collect(),
+    //     skeleton_dash
+    // )
 
-    // TODO: figure out what to do with the log stuff
-    // Could be saved into a json file instead of a log
-    finish_log()
+    // // TODO: figure out what to do with the log stuff
+    // // Could be saved into a json file instead of a log
+    // finish_log(
+    //     run_scrublet.out.pipe_log,
+    //     generate_dashboard.out
+    // )
 
-    zip_up_log_data()
+    // zip_up_log_data(
+    //     finish_log.out.summary_log.collect(),
+    //     finish_log.out.full_log.collect()
+    // )
 
 }
 

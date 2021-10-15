@@ -1,5 +1,4 @@
 
-
 /*************
 
 Process: generate_dashboard
@@ -35,28 +34,29 @@ Process: generate_dashboard
 *************/
 
 process generate_dashboard {
-    container "${params.container__Rscript}"
+   container "${params.container__Rscript}"
 
-    publishDir path: "${params.output_dir}/", pattern: "exp_dash", mode: 'copy'
+   publishDir path: "${params.output_dir}/", pattern: "exp_dash", mode: 'copy', overwrite: true
 
-    input:
-        file all_sample_stats
-        file cell_counts
-        file all_collision
-        file plots
-        file scrublet_png
+   input:
+      file all_sample_stats
+      file cell_counts
+      file all_collision
+      file plots
+      file scrublet_png
+      file skeleton_dash
 
-    output:
-        file exp_dash
+   output:
+      path exp_dash
 
-    """
-    generate_dash_data.R $all_sample_stats $params.output_dir $cell_counts $all_collision $params.garnett_file
+   """
+   generate_dash_data.R $all_sample_stats $params.output_dir $cell_counts $all_collision $params.garnett_file
 
-    mkdir exp_dash
-    cp -R $baseDir/bin/skeleton_dash/* exp_dash/
-    mv *.png exp_dash/img/
+   mkdir exp_dash
+   cp -R $skeleton_dash/* exp_dash/
+   mv *.png exp_dash/img/
 
-    mv *.js exp_dash/js/
+   mv *.js exp_dash/js/
 
-    """
+   """
 }

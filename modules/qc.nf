@@ -1,5 +1,4 @@
 
-
 /*************
 
 Process: reformat_qc
@@ -47,17 +46,17 @@ save_samp_stats = {params.output_dir + "/" + it - ~/_sample_stats.csv/ + "/" + i
 process reformat_qc {
    container "${params.container__Rscript}"
 
-   publishDir path: "${params.output_dir}/", saveAs: save_cds, pattern: "temp_fold/*cds.RDS", mode: 'copy'
-   publishDir path: "${params.output_dir}/", saveAs: save_cell_qc, pattern: "temp_fold/*cell_qc.csv", mode: 'copy'
-   publishDir path: "${params.output_dir}/", saveAs: save_samp_stats, pattern: "*sample_stats.csv", mode: 'copy'
+   publishDir path: "${params.output_dir}/", saveAs: save_cds, pattern: "temp_fold/*cds.RDS", mode: 'copy', overwrite: true
+   publishDir path: "${params.output_dir}/", saveAs: save_cell_qc, pattern: "temp_fold/*cell_qc.csv", mode: 'copy', overwrite: true
+   publishDir path: "${params.output_dir}/", saveAs: save_samp_stats, pattern: "*sample_stats.csv", mode: 'copy', overwrite: true
 
    input:
       tuple val(key), file(scrub_csv), file(cds_object), file(cell_qc), file(dup_stats)
 
    output:
-      set key, file("temp_fold/*.RDS"), file("temp_fold/*.csv"), emit: rscrub_out
-      file("*sample_stats.csv"), emit: sample_stats
-      file("*collision.txt"), emit: collision
+      tuple val(key), file("temp_fold/*.RDS"), file("temp_fold/*.csv"), emit: rscrub
+      path("*sample_stats.csv"), emit: sample_stats
+      path("*collision.txt"), emit: collision
 
    script:
       template "reformat_qc.R"
@@ -107,26 +106,26 @@ save_cellqc = {params.output_dir + "/" + it - ~/_cell_qc.png/ + "/" + it}
 save_garnett = {params.output_dir + "/" + it.split("_")[0] + "/" + it}
 
 process generate_qc_metrics {
-    container "${params.container__Rscript}"
+   container "${params.container__Rscript}"
 
-    publishDir path: "${params.output_dir}/", saveAs: save_umap, pattern: "*UMAP.png", mode: 'copy'
-    publishDir path: "${params.output_dir}/", saveAs: save_knee, pattern: "*knee_plot.png", mode: 'copy'
-    publishDir path: "${params.output_dir}/", saveAs: save_cellqc, pattern: "*cell_qc.png", mode: 'copy'
-    publishDir path: "${params.output_dir}/", saveAs: save_garnett, pattern: "*Garnett.png", mode: 'copy'
+   publishDir path: "${params.output_dir}/", saveAs: save_umap, pattern: "*UMAP.png", mode: 'copy', overwrite: true
+   publishDir path: "${params.output_dir}/", saveAs: save_knee, pattern: "*knee_plot.png", mode: 'copy', overwrite: true
+   publishDir path: "${params.output_dir}/", saveAs: save_cellqc, pattern: "*cell_qc.png", mode: 'copy', overwrite: true
+   publishDir path: "${params.output_dir}/", saveAs: save_garnett, pattern: "*Garnett.png", mode: 'copy'
 
-    input:
-        tuple val(key), file(cds_object), file(cell_qc), file(umis_per_cell)
+   input:
+      tuple val(key), file(cds_object), file(cell_qc), file(umis_per_cell)
 
-    output:
-        file("*.png"), emit: qc_plots
-        file("*.txt"), emit: cutoff
+   output:
+      path("*.png"), emit: qc_plots
+      path("*.txt"), emit: cutoff
 
-    """
-    generate_qc.R\
-        $cds_object $umis_per_cell $key \
-        --specify_cutoff $params.umi_cutoff\
+   """
+   generate_qc.R\
+      $cds_object $umis_per_cell $key \
+      --specify_cutoff $params.umi_cutoff\
 
-    """
+   """
 }
 
 
@@ -158,13 +157,13 @@ Process: zip_up_sample_stats
 process zip_up_sample_stats {
    container "${params.container__alpine}"
 
-   publishDir path: "${params.output_dir}/", pattern: "all_sample_stats.csv", mode: 'copy'
+   publishDir path: "${params.output_dir}/", pattern: "all_sample_stats.csv", mode: 'copy', overwrite: true
 
    input:
       file(files)
 
    output:
-      file "*ll_sample_stats.csv"
+      path "*ll_sample_stats.csv"
 
    """
    sed -s 1d $files > all_sample_stats.csv
@@ -203,7 +202,7 @@ process calc_cell_totals {
       file cell_qcs
 
    output:
-      file "*.txt"
+      path "*.txt"
 
    """
 

@@ -42,7 +42,7 @@ process make_cds {
 
     output:
         tuple val(key), file("*for_scrub.mtx"), file("*.RDS"), file("*cell_qc.csv"), file("make_cds.log"), emit: cds_out
-        file("*cell_qc.csv"), emit: cell_qcs
+        path("*cell_qc.csv"), emit: cell_qcs
 
     """
     cat ${logfile} > make_cds.log
@@ -50,14 +50,6 @@ process make_cds {
     printf "    Process versions:
         \$(R --version | grep 'R version')
             monocle3 version \$(Rscript -e 'packageVersion("monocle3")')\n\n" >> make_cds.log
-    echo '    Process command:
-        make_cds.R
-            "$umi_matrix"
-            "$cell_data"
-            "$gene_data"
-            "${gtf_path}/latest.genes.bed"
-            "$key"
-            "$params.umi_cutoff"\n' >> make_cds.log
 
 
     make_cds.R \

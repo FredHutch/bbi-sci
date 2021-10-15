@@ -36,18 +36,18 @@ Process: sort_and_filter
 cores_sf = params.max_cores < 10 ? params.max_cores : 10
 
 process sort_and_filter {
-    container "${params.container__samtools}"
+   container "${params.container__samtools}"
 
-    cores_sf = params.max_cores < 10 ? params.max_cores : 10
-    cpus "${cores_sf}"
+   cores_sf = params.max_cores < 10 ? params.max_cores : 10
+   cpus "${cores_sf}"
 
-    input:
-        tuple val(key), val(name), file(aligned_bam)
+   input:
+      tuple val(key), val(name), file(aligned_bam)
 
-    output:
-        tuple val(key), file("*.bam"), emit: sorted_bams
-        tuple val(key), file("*_sf.txt"), emit: sf_logs
+   output:
+      tuple val(key), file("*.bam"), emit: sorted_bams
+      tuple val(key), file("*_sf.txt"), emit: sf_logs
 
-    script:
-        template "sort_and_filter.sh"
+   script:
+      template "sort_and_filter.sh"
 }

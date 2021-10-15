@@ -40,16 +40,18 @@ Process: gather_info
 *************/
 
 process gather_info {
-    container "${params.container__python}"
+   container "${params.container__basic}"
 
-    input:
-        file good_sample_sheet, stageAs: "sample_sheet.csv"
-        tuple val(key), val(name), file(trimmed_fastq)
+   input:
+      file good_sample_sheet
+      tuple val(key), val(name), file(trimmed_fastq)
+      file star_file
+      file gene_file
 
-    output:
-        tuple val(key), val(name), env(star_path), env(star_mem), file(trimmed_fastq), emit: align_prepped
-        tuple val(key), env(gtf_path), emit: gtf_info
+   output:
+      tuple val(key), val(name), env(star_path), env(star_mem), file(trimmed_fastq), emit: align_prepped
+      tuple val(key), env(gtf_path), emit: gtf_info
 
-    script:
-        template 'gather_info.sh'
+   script:
+      template 'gather_info.sh'
 }

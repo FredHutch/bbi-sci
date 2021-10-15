@@ -33,17 +33,17 @@ Process: split_bam
 *************/
 
 process split_bam {
-    container "${params.container_tools}"
+   container "${params.container_tools}"
 
-    input:
-        tuple val(key), file(merged_bam), val(gtf_path)
+   input:
+      tuple val(key), file(merged_bam), val(gtf_path)
 
-    output:
-        tuple val(key), file("split_bams/*.bam"), val(gtf_path), emit: split_bams
-        tuple val(key), file("remove_dups.log"), emit: split_bam_log
-        tuple file merged_bam, emit: output
+   output:
+      tuple val(key), file("split_bams/*.bam"), val(gtf_path), emit: split_bams
+      tuple val(key), file("remove_dups.log"), emit: split_bam_log
+      path merged_bam, emit: output
 
-    script:
-        template "split.sh"
+   script:
+      template "split.sh"
 
 }

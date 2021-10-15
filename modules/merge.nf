@@ -36,19 +36,19 @@ cores_merge = params.max_cores < 8 ? params.max_cores : 8
 save_bam = {params.output_dir + "/" + it - ~/.bam/ + "/" + it}
 
 process merge_bams {
-    container "${params.container__samtools}"
+   container "${params.container__samtools}"
 
-    cpus cores_merge
-    publishDir path: "${params.output_dir}/", saveAs: save_bam, pattern: "*.bam", mode: 'copy', overwrite: true
-    publishDir path: "${params.output_dir}/logs", pattern: "*.read_count.txt", mode: 'copy', overwrite: true
+   cpus cores_merge
+   publishDir path: "${params.output_dir}/", saveAs: save_bam, pattern: "*.bam", mode: 'copy', overwrite: true
+   publishDir path: "${params.output_dir}/logs", pattern: "*.read_count.txt", mode: 'copy', overwrite: true
 
-    input:
-        tuple val(key), file(sorted_bam)
+   input:
+      tuple val(key), file(sorted_bam)
 
-    output:
-        tuple val(key), file("*.bam"), emit: sample_bams
-        tuple val(key), file("*.read_count.txt"), emit: read_count
+   output:
+      tuple val(key), file("*.bam"), emit: sample_bams
+      tuple val(key), file("*.read_count.txt"), emit: read_count
 
-    script:
-        template "merge.sh"
+   script:
+      template "merge.sh"
 }

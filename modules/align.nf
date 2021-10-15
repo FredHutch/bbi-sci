@@ -38,22 +38,22 @@ Process: align_reads
 cores_align = params.max_cores < 8 ? params.max_cores : 8
 
 process align_reads {
-    container "${params.container__star}"
+   container "${params.container__star}"
 
-    publishDir "${params.output_dir}/logs", pattern: '*align.txt', mode: 'copy', overwrite: true
+   publishDir "${params.output_dir}/logs", pattern: '*align.txt', mode: 'copy', overwrite: true
 
-    memory { star_mem.toInteger()/cores_align + " GB" }
-    cpus cores_align
+   memory { star_mem.toInteger()/cores_align + " GB" }
+   cpus cores_align
 
-    input:
-        tuple val(key), val(name), val(star_path), val(star_mem), file(trimmed_fastq)
+   input:
+      tuple val(key), val(name), val(star_path), val(star_mem), file(trimmed_fastq)
 
-    output:
-        path("align_out"), emit: align_output
-        file("*align.txt"), emit: align_logs
-        tuple val(key), val(name), file("align_out/*Aligned.out.bam"), emit: aligned_bams
+   output:
+      path("align_out"), emit: align_output
+      path("*align.txt"), emit: align_logs
+      tuple val(key), val(name), file("align_out/*Aligned.out.bam"), emit: aligned_bams
 
-    script:
-        template 'align.sh'
+   script:
+      template 'align.sh'
 
 }

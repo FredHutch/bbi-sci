@@ -38,16 +38,16 @@ Process: merge_assignment
 
 
 process merge_assignment {
-    container "${params.container__tools}"
+   container "${params.container__tools}"
 
-    input:
-        tuple val(key), file(split_bed), file(split_gene_assign), file(split_umi_count), file(logfile), file(read_count)
+   input:
+      tuple val(key), file(split_bed), file(split_gene_assign), file(split_umi_count), file(logfile), file(read_count)
 
-    output:
-        tuple val(key), file("*.gz"), file("*_ga.txt"), file("merge_assignment.log"), emit: merge_assignment_out
-        tuple val(key), file("*duplication_rate_stats.txt"), emit: duplication_rate_out
-        file "*.bed", emit: temp_bed
+   output:
+      tuple val(key), file("*.gz"), file("*_ga.txt"), file("merge_assignment.log"), emit: merge_assignment_out
+      tuple val(key), file("*duplication_rate_stats.txt"), emit: duplication_rate
+      path "*.bed", emit: temp_bed
 
-    script:
-        template "merge_assignment.sh"
+   script:
+      template "merge_assignment.sh"
 }

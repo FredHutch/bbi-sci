@@ -34,25 +34,26 @@ Process: trim_fastqs
 *************/
 
 process trim_fastqs {
-    container "${params.container__trim_galore}"
+   container "${params.container__trim_galore}"
 
-    publishDir "${params.output_dir}/logs", pattern: '*trim.txt', mode: 'copy', overwrite: true
+   publishDir "${params.output_dir}/logs", pattern: '*trim.txt', mode: 'copy', overwrite: true
 
-    input:
-        file input_fastq
-        val sample_list
+   input:
+      file input_fastq
+      val sample_list
 
-    output:
-        path("trim_out"), emit: trim_output
-        tuple val(key), val(name), file("trim_out/*.fq.gz"), emit: trimmed_fastq
-        file('*trim.txt'), emit: trim_log
-        tuple val(key), file(input_fastq), emit: fastqs_out
+   output:
+      path("trim_out"), emit: trim_output
+      tuple val(key), val(name), path("trim_out/*.fq.gz"), emit: trimmed_fastq
+      path('*trim.txt'), emit: trim_log
+      tuple val(key), path(input_fastq), emit: fastqs_out
 
-    when:
-        !((input_fastq.name.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]) in "Undetermined") && ((input_fastq.name.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]) in samp_list)
+   when:
+      !((input_fastq.name.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]) in "Undetermined") &&
+       ((input_fastq.name.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]) in sample_list)
 
-    script:
-        name = input_fastq.baseName - ~/.fastq/
-        key = input_fastq.baseName.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]
-        template 'trim_fastqs.sh'
+   script:
+      name = input_fastq.name.replaceAll('.fastq.gz', '')
+      key = input_fastq.baseName.split(/-L[0-9]{3}/)[0].split(/\.fq.part/)[0]
+      template 'trim_fastqs.sh'
 }
