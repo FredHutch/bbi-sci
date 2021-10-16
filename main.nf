@@ -212,7 +212,12 @@ workflow {
 
     // Gather the star and gtf paths and info for downstream
     gather_info(sample_sheet_file, trimmed_fastq, star_file, gene_file)
-    align_prepped = gather_info.out.align_prepped
+  
+    // Is there a better way to stage the genome file?
+    align_prepped = gather_info.out.align_prepped.map{
+        it[2] = file(it[2])
+        return it
+    }
     gtf_info = gather_info.out.gtf_info
     align_prepped.view()
     gtf_info.view()
@@ -222,6 +227,7 @@ workflow {
         grouped_fastqs = fastqs_out.groupTuple()
         process_hashes(grouped_fastqs)
     }
+
 
     align_reads(align_prepped)
 

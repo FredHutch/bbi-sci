@@ -35,18 +35,18 @@ Process: align_reads
 *************/
 
 // Cores for alignment set at 8 unless limit is lower
-cores_align = params.max_cores < 8 ? params.max_cores : 8
+cores_align = Math.min(params.max_cores, 8)
 
 process align_reads {
    container "${params.container__star}"
 
    publishDir "${params.output_dir}/logs", pattern: '*align.txt', mode: 'copy', overwrite: true
 
-   memory { star_mem.toInteger()/cores_align + " GB" }
+   memory { star_mem.toInteger() / cores_align + " GB" }
    cpus cores_align
 
    input:
-      tuple val(key), val(name), val(star_path), val(star_mem), file(trimmed_fastq)
+      tuple val(key), val(name), file(star_path), val(star_mem), file(trimmed_fastq)
 
    output:
       path("align_out"), emit: align_output
