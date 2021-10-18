@@ -36,6 +36,7 @@ params.sample_sheet = false
 params.output_dir = false
 
 // NF Modules
+// TODO: Split these modules up into logical groups
 include {
     check_sample_sheet
 } from './modules/samplesheets'
@@ -183,7 +184,7 @@ def getRtBarcodeFile() {
 }
 
 
-// TODO: How to save versions of software used
+// TODO: is there a better way of saving the software versions
 workflow {
     // check required options
     if (params.help || !params.output_dir || !params.sample_sheet || !params.demux_out) {
@@ -231,85 +232,86 @@ workflow {
 
     align_reads(align_prepped)
 
-    // aligned_bams = align_reads.out.aligned_bams
+    aligned_bams = align_reads.out.aligned_bams
 
-    // sort_and_filter(aligned_bams)
+    sort_and_filter(aligned_bams)
 
-    // sorted_bams = sort_and_filter.out.sorted_bams
+    sorted_bams = sort_and_filter.out.sorted_bams
 
-    // // TODO: combine logs
+    // TODO: combine logs
 
-    // to_merge = sorted_bams.groupTuple()
-    // merge_bams(to_merge)
+    to_merge = sorted_bams.groupTuple()
+    merge_bams(to_merge)
 
-    // sample_bams = merge_bams.out.sample_bams
-    // assign_prepped = sample_bams.join(gtf_info)
+    sample_bams = merge_bams.out.sample_bams
+    assign_prepped = sample_bams.join(gtf_info)
 
-    // split_bam(align_prepped)
+    split_bam(align_prepped)
 
-    // split_bams = split_bam.out.split_bams.flatten()
+    split_bams = split_bam.out.split_bams.flatten()
 
-    // remove_dups_assign_genes(split_bams)
+    remove_dups_assign_genes(split_bams)
 
-    // for_cat_dups = remove_dups_assign_genes.out
-    //     .groupTuple()
-    //     .join(split_bam.out.split_bam_log)
-    //     .join(merge_bams.out.read_count)
+    for_cat_dups = remove_dups_assign_genes.out
+        .groupTuple()
+        .join(split_bam.out.split_bam_log)
+        .join(merge_bams.out.read_count)
     
-    // merge_assignment(for_cat_dups)
+    merge_assignment(for_cat_dups)
 
-    // merge_assignment_out = merge_assignment.out.merge_assignment_out
+    merge_assignment_out = merge_assignment.out.merge_assignment_out
 
-    // count_umis_by_sample(merge_assignment_out)
+    count_umis_by_sample(merge_assignment_out)
 
-    // make_matrix_prepped = count_umis_by_sample.out.ubss_out.join(gtf_info)
+    make_matrix_prepped = count_umis_by_sample.out.ubss_out.join(gtf_info)
 
-    // make_matrix(make_matrix_prepped)
+    make_matrix(make_matrix_prepped)
 
-    // make_cds(make_matrix.out)
+    make_cds(make_matrix.out)
     
-    // apply_garnett(make_cds.out.cds_out)
+    apply_garnett(make_cds.out.cds_out)
 
-    // run_scrublet(apply_garnett.out)
+    run_scrublet(apply_garnett.out)
 
-    // reformat_qc_in = run_scrublet.out.scrublet_out.join(merge_assignment.out.duplication_rate)
-    // reformat_qc(reformat_qc_in)
+    reformat_qc_in = run_scrublet.out.scrublet_out.join(merge_assignment.out.duplication_rate)
+    reformat_qc(reformat_qc_in)
 
-    // sample_stats = reformat_qc.out.sample_stats.collect()
-    // collision = reformat_qc.out.collision.collect()
-    // for_gen_qc = reformat_qc.out.rscrub.join(count_umis_by_sample.out.umis_per_cell)
+    sample_stats = reformat_qc.out.sample_stats.collect()
+    collision = reformat_qc.out.collision.collect()
+    for_gen_qc = reformat_qc.out.rscrub.join(count_umis_by_sample.out.umis_per_cell)
 
-    // generate_qc_metrics(for_gen_qc)
+    generate_qc_metrics(for_gen_qc)
 
-    // zip_up_sample_stats(sample_stats)
+    zip_up_sample_stats(sample_stats)
 
-    // cell_qcs = make_cds.out.cell_qcs.collect()
+    cell_qcs = make_cds.out.cell_qcs.collect()
 
-    // calc_cell_totals(cell_qcs)
+    calc_cell_totals(cell_qcs)
 
-    // collapse_collision(collision)
+    all_collisions = collision.collectFile()
+    //collapse_collision(collision)
 
-    // skeleton_dash = file("$baseDir/bin/skeleton_dash")
-    // generate_dashboard(
-    //     zip_up_sample_stats.out,
-    //     calc_cell_totals.out,
-    //     collapse_collision.out,
-    //     generate_qc_metrics.out.qc_plots.collect(),
-    //     run_scrublet.out.scrub_pngs.collect(),
-    //     skeleton_dash
-    // )
+    skeleton_dash = file("$baseDir/bin/skeleton_dash")
+    generate_dashboard(
+        zip_up_sample_stats.out,
+        calc_cell_totals.out,
+        all_collisions,
+        generate_qc_metrics.out.qc_plots.collect(),
+        run_scrublet.out.scrub_pngs.collect(),
+        skeleton_dash
+    )
 
-    // // TODO: figure out what to do with the log stuff
-    // // Could be saved into a json file instead of a log
-    // finish_log(
-    //     run_scrublet.out.pipe_log,
-    //     generate_dashboard.out
-    // )
+    // TODO: figure out what to do with the log stuff
+    // Could be saved into a json file instead of a log
+    finish_log(
+        run_scrublet.out.pipe_log,
+        generate_dashboard.out
+    )
 
-    // zip_up_log_data(
-    //     finish_log.out.summary_log.collect(),
-    //     finish_log.out.full_log.collect()
-    // )
+    zip_up_log_data(
+        finish_log.out.summary_log.collect(),
+        finish_log.out.full_log.collect()
+    )
 
 }
 

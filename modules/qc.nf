@@ -242,6 +242,8 @@ Process: collapse_collision
 
 *************/
 
+// TODO: This could probably be replaced by collectFile
+
 process collapse_collision {
    container "${params.container__alpine}"
 
