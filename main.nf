@@ -72,6 +72,20 @@ if (!params.output_dir || !params.sample_sheet || !params.level || !params.demux
     exit 1, "Must include config file using -c CONFIG_FILE.config that includes output_dir, sample_sheet, level and demux_out"
 }
 
+// Map the file inputs to channels
+sample_sheet = Channel.fromPath(params.sample_sheet)
+gene_file = Channel.fromPath(params.gene_file)
+star_file_ch1 = Channel.fromPath(params.star_file)
+star_file_ch2 = Channel.fromPath(params.star_file)
+
+// If the user specified 'default' for params.rt_barcode_file
+if (params.rt_barcode_file == 'default'){
+    // Point to the default RT barcode file
+    rt_barcode_file = Channel.fromPath("${baseDir}/bin/barcode_files/rt.txt")
+}else{
+    // Otherwise, use the custom file provided by the user
+    rt_barcode_file = Channel.fromPath(params.rt_barcode_file)
+}
 
 /*************
 
@@ -109,6 +123,11 @@ Process: check_sample_sheet
 process check_sample_sheet {
     cache 'lenient'
 
+    input:
+        file sample_sheet
+        file star_file from star_file_ch1
+        file rt_barcode_file
+
     output:
         file "*.csv" into good_sample_sheet
         file '*.log' into log_check_sample
@@ -124,14 +143,14 @@ process check_sample_sheet {
         \$(python --version)\n\n" >> start.log
     printf "    Process command:
         check_sample_sheet.py
-            --sample_sheet $params.sample_sheet
-            --star_file $params.star_file
-            --level $params.level --rt_barcode_file $params.rt_barcode_file
+            --sample_sheet $sample_sheet
+            --star_file $star_file
+            --level $params.level --rt_barcode_file $rt_barcode_file
             --max_wells_per_samp $params.max_wells_per_sample\n\n" >> start.log
 
 
-    check_sample_sheet.py --sample_sheet $params.sample_sheet --star_file $params.star_file \
-        --level $params.level --rt_barcode_file $params.rt_barcode_file \
+    check_sample_sheet.py --sample_sheet $sample_sheet --star_file $star_file \
+        --level $params.level --rt_barcode_file $rt_barcode_file \
         --max_wells_per_samp $params.max_wells_per_sample
 
 
@@ -284,6 +303,8 @@ process gather_info {
 
     input:
         file good_sample_sheet
+        file star_file from star_file_ch2
+        file gene_file
         set val(key), val(name), file(trimmed_fastq), file(logfile), file(log_piece2) from trimmed_fastqs
 
     output:
@@ -294,9 +315,9 @@ process gather_info {
     """
 
     spec=`sed 's/ *\$//g' good_sample_sheet.csv | awk 'BEGIN {FS=",";OFS=","}{split(\$2,a,"_fq_part");gsub("[_ /-]", ".", a[1]);print(\$1, a[1], \$3)}' | awk 'BEGIN {FS=","}; \$2=="$key" {print \$3}' | uniq`
-    star_mem=`awk -v var="\$spec" '\$1==var {print \$3}' $params.star_file | uniq`
-    star_path=`awk -v var="\$spec" '\$1==var {print \$2}' $params.star_file | uniq`
-    gtf_path=`awk -v var="\$spec" '\$1==var {print \$2}' $params.gene_file | uniq`
+    star_mem=`awk -v var="\$spec" '\$1==var {print \$3}' $star_file | uniq`
+    star_path=`awk -v var="\$spec" '\$1==var {print \$2}' $star_file | uniq`
+    gtf_path=`awk -v var="\$spec" '\$1==var {print \$2}' $gene_file | uniq`
 
     """
 }
@@ -350,6 +371,7 @@ process process_hashes {
     publishDir path: "${params.output_dir}/", saveAs: save_hash_mtx, pattern: "*.mtx", mode: 'copy'
 
     input:
+        file hash_list from Channel.fromPath("${params.hash_list}")
         set key, file(input_fastq) from for_hash
 
     output:
@@ -360,7 +382,7 @@ process process_hashes {
         params.hash_list != false
 
     """
-    process_hashes.py --hash_sheet $params.hash_list \
+    process_hashes.py --hash_sheet $hash_list \
         --fastq <(zcat $input_fastq) --key $key
 
     """
