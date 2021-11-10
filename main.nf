@@ -87,6 +87,13 @@ if (params.rt_barcode_file == 'default'){
     rt_barcode_file = Channel.fromPath(params.rt_barcode_file)
 }
 
+// If the user provided params.hash_list
+if ( params.hash_list ){
+    hash_list_ch = Channel.fromPath(params.hash_list)
+} else {
+    hash_list_ch = Channel.empty()
+}
+
 /*************
 
 Process: check_sample_sheet
@@ -371,7 +378,7 @@ process process_hashes {
     publishDir path: "${params.output_dir}/", saveAs: save_hash_mtx, pattern: "*.mtx", mode: 'copy'
 
     input:
-        file hash_list from Channel.fromPath("${params.hash_list}")
+        file hash_list from hash_list_ch
         set key, file(input_fastq) from for_hash
 
     output:
