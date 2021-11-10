@@ -219,8 +219,7 @@ process trim_fastqs {
     cache 'lenient'
 
     input:
-        file input_fastq from Channel.fromPath("${params.demux_out}/*.fastq.gz")
-        file logfile from log_check_sample
+        set file(input_fastq), file(logfile) from Channel.fromPath("${params.demux_out}/*.fastq.gz").combine(log_check_sample)
 
     output:
         file "trim_out" into trim_output
