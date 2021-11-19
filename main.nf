@@ -704,89 +704,92 @@ process split_bam {
 }
 
 
-// /*************
+/*************
 
-// Process: remove_dups_assign_genes
+Process: remove_dups_assign_genes
 
-//  Inputs:
-//     split_bam - bams split by reference (chromosome)
-//     gtf_path - path to gtf info folder
-//     split_umi_count - file with count of umis in split bam
+ Inputs:
+    split_bam - bams split by reference (chromosome)
+    gtf_path - path to gtf info folder
+    split_umi_count - file with count of umis in split bam
 
-//  Outputs:
-//     split_gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
-//     split_bed - deduplicated sorted bed file
+ Outputs:
+    split_gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
+    split_bed - deduplicated sorted bed file
 
-//  Pass through:
-//     key - sample id
+ Pass through:
+    key - sample id
 
-//  Summary:
-//     1. Remove duplicate reads using rmdup.py
-//     2. Use bedtools map to map the dedupped bed file to all exons with options:
-//         -s forced strandedness
-//         -f 0.95 95% of read must overlap exon
-//         -c 7 map the name of the gene
-//         -o distinct concatenate list of gene names
-//         -delim "|" custom delimiter
-//         -nonamecheck Don't error if there are different naming conventions for the chromosomes
-//     3. Use bedtools map to map output to gene index
-//         -s forced strandedness
-//         -f 0.95 95% of read must overlap exon
-//         -c 4 map the name of the cell name
-//         -o distinct concatenate list of gene names
-//         -delim "|" custom delimiter
-//         -nonamecheck Don't error if there are different naming conventions for the chromosomes
-//     4. Sort and collapse
-//     5. Run assign-reads-to-genes.py to deal with exon v intron
+ Summary:
+    1. Remove duplicate reads using rmdup.py
+    2. Use bedtools map to map the dedupped bed file to all exons with options:
+        -s forced strandedness
+        -f 0.95 95% of read must overlap exon
+        -c 7 map the name of the gene
+        -o distinct concatenate list of gene names
+        -delim "|" custom delimiter
+        -nonamecheck Don't error if there are different naming conventions for the chromosomes
+    3. Use bedtools map to map output to gene index
+        -s forced strandedness
+        -f 0.95 95% of read must overlap exon
+        -c 4 map the name of the cell name
+        -o distinct concatenate list of gene names
+        -delim "|" custom delimiter
+        -nonamecheck Don't error if there are different naming conventions for the chromosomes
+    4. Sort and collapse
+    5. Run assign-reads-to-genes.py to deal with exon v intron
 
-//  Downstream:
-//     merge_assignment
+ Downstream:
+    merge_assignment
 
-//  Published:
+ Published:
 
-//  Notes:
-//     Potential speed up - remove non-genic reads before sort?
+ Notes:
+    Potential speed up - remove non-genic reads before sort?
 
-// *************/
+*************/
 
-// process remove_dups_assign_genes {
-//     cache 'lenient'
+process remove_dups_assign_genes {
+    cache 'lenient'
 
-//     input:
-//         set key, path(split_bam), val(gtf_path) from split_bams
+    input:
+        tuple val(key), path(split_bam), path(exons_bed), path(genes_bed)
 
-//     output:
-//         set key, path("*.bed"), path("*_ga.txt"), path("*_umi_count.txt") into remove_dup_part_out
+    output:
+        tuple val(key), path("*.bed"), path("*_ga.txt"), path("*_umi_count.txt"), emit: "remove_dup_part_out"
 
-//     """
-//     rmdup.py --bam $split_bam --output_bam out.bam
+    """#!/bin/bash
 
-//     samtools view -c out.bam > ${split_bam}_umi_count.txt
+    set -euo pipefail
 
-//     bedtools bamtobed -i out.bam -split \
-//             | sort -k1,1 -k2,2n -k3,3n -S 5G \
-//             > "${split_bam}.bed"
+    rmdup.py --bam $split_bam --output_bam out.bam
 
-//     bedtools map \
-//         -a "${split_bam}.bed" \
-//         -b "${gtf_path}/latest.exons.bed" \
-//         -nonamecheck -s -f 0.95 -c 7 -o distinct -delim '|' \
-//     | bedtools map \
-//         -a - -b "${gtf_path}/latest.genes.bed" \
-//         -nonamecheck -s -f 0.95 -c 4 -o distinct -delim '|' \
-//     | sort -k4,4 -k2,2n -k3,3n -S 5G\
-//     | datamash \
-//         -g 4 first 1 first 2 last 3 first 5 first 6 collapse 7 collapse 8 \
-//     | assign-reads-to-genes.py "${gtf_path}/latest.genes.bed" \
-//     | awk '\$3 == "exonic" || \$3 == "intronic" {{
-//             split(\$1, arr, "|")
-//             printf "%s_%s_%s\t%s\t%s\\n", arr[3], arr[4], arr[5], \$2, \$3
-//     }}' \
-//     | sort -k1,1 -k2,2 -S 5G > "${split_bam}_ga.txt"
+    samtools view -c out.bam > ${split_bam}_umi_count.txt
 
-//     """
+    bedtools bamtobed -i out.bam -split \
+            | sort -k1,1 -k2,2n -k3,3n -S 5G \
+            > "${split_bam}.bed"
 
-// }
+    bedtools map \
+        -a "${split_bam}.bed" \
+        -b "${exons_bed}" \
+        -nonamecheck -s -f 0.95 -c 7 -o distinct -delim '|' \
+    | bedtools map \
+        -a - -b "${genes_bed}" \
+        -nonamecheck -s -f 0.95 -c 4 -o distinct -delim '|' \
+    | sort -k4,4 -k2,2n -k3,3n -S 5G\
+    | datamash \
+        -g 4 first 1 first 2 last 3 first 5 first 6 collapse 7 collapse 8 \
+    | assign-reads-to-genes.py "${genes_bed}" \
+    | awk '\$3 == "exonic" || \$3 == "intronic" {{
+            split(\$1, arr, "|")
+            printf "%s_%s_%s\t%s\t%s\\n", arr[3], arr[4], arr[5], \$2, \$3
+    }}' \
+    | sort -k1,1 -k2,2 -S 5G > "${split_bam}_ga.txt"
+
+    """
+
+}
 
 // /*************
 
@@ -835,10 +838,10 @@ process split_bam {
 //     cache 'lenient'
 
 //     input:
-//         set key, file(split_bed), file(split_gene_assign), file(split_umi_count), file(logfile), file(read_count) from for_cat_dups
+//         tuple val(key), file(split_bed), file(split_gene_assign), file(split_umi_count), file(logfile), file(read_count) from for_cat_dups
 
 //     output:
-//         set key, file("*.gz"), file("*_ga.txt"), file("merge_assignment.log") into merge_assignment_out
+//         tuple val(key), file("*.gz"), file("*_ga.txt"), file("merge_assignment.log") into merge_assignment_out
 //         set val(key), file("*duplication_rate_stats.txt") into duplication_rate_out
 //         file "*.bed"  into temp_bed
 
@@ -912,8 +915,8 @@ process split_bam {
 //         set val(key), file(cell_gene_count), file(gene_assign), file(logfile) from merge_assignment_out
 
 //     output:
-//         set key, file(cell_gene_count), file("count_umis_by_sample.log") into ubss_out
-//         set key, file("*UMIs.per.cell.barcode.txt") into umis_per_cell
+//         tuple val(key), file(cell_gene_count), file("count_umis_by_sample.log") into ubss_out
+//         tuple val(key), file("*UMIs.per.cell.barcode.txt") into umis_per_cell
 //         file "*UMIs.per.cell.barcode.intronic.txt" into umi_per_cell_intronic
 
 //     """
@@ -992,10 +995,10 @@ process split_bam {
 //     publishDir path: "${params.output_dir}/", saveAs: save_gene_anno, pattern: "*gene_annotations.txt", mode: 'copy'
 
 //     input:
-//         set key, file(cell_gene_count), file(logfile), val(gtf_path) from make_matrix_prepped
+//         tuple val(key), file(cell_gene_count), file(logfile), val(gtf_path) from make_matrix_prepped
 
 //     output:
-//         set key, file("*cell_annotations.txt"), file("*umi_counts.mtx"), file("*gene_annotations.txt"), val(gtf_path), file("make_matrix.log") into mat_output
+//         tuple val(key), file("*cell_annotations.txt"), file("*umi_counts.mtx"), file("*gene_annotations.txt"), val(gtf_path), file("make_matrix.log") into mat_output
 
 //     """
 //     cat ${logfile} > make_matrix.log
@@ -1057,10 +1060,10 @@ process split_bam {
 //     cache 'lenient'
 
 //     input:
-//         set key, file(cell_data), file(umi_matrix), file(gene_data), val(gtf_path), file(logfile) from mat_output
+//         tuple val(key), file(cell_data), file(umi_matrix), file(gene_data), val(gtf_path), file(logfile) from mat_output
 
 //     output:
-//         set key, file("*for_scrub.mtx"), file("*.RDS"), file("*cell_qc.csv"), file("make_cds.log") into cds_out
+//         tuple val(key), file("*for_scrub.mtx"), file("*.RDS"), file("*cell_qc.csv"), file("make_cds.log") into cds_out
 //         file("*cell_qc.csv") into cell_qcs
 
 //     """
@@ -1097,10 +1100,10 @@ process split_bam {
 //     cache 'lenient'
 
 //     input:
-//         set key, file(scrub_matrix), file(cds_object), file(cell_qc), file(logfile) from cds_out
+//         tuple val(key), file(scrub_matrix), file(cds_object), file(cell_qc), file(logfile) from cds_out
 
 //     output:
-//         set key, file(scrub_matrix), file("new_cds/*.RDS"), file(cell_qc), file("apply_garnett.log") into for_scrub
+//         tuple val(key), file(scrub_matrix), file("new_cds/*.RDS"), file(cell_qc), file("apply_garnett.log") into for_scrub
 
 // """
 //     cat ${logfile} > apply_garnett.log
@@ -1164,12 +1167,12 @@ process split_bam {
 //     publishDir path: "${params.output_dir}/", saveAs: save_hist, pattern: "*png", mode: 'copy'
 
 //     input:
-//         set key, file(scrub_matrix), file(cds_object), file(cell_qc), file(logfile) from for_scrub
+//         tuple val(key), file(scrub_matrix), file(cds_object), file(cell_qc), file(logfile) from for_scrub
 
 //     output:
-//         set key, file("*scrublet_out.csv"), file(cds_object), file(cell_qc) into scrublet_out
+//         tuple val(key), file("*scrublet_out.csv"), file(cds_object), file(cell_qc) into scrublet_out
 //         file ("*.png") into scrub_pngs
-//         set key, file("run_scrublet.log") into pipe_log
+//         tuple val(key), file("run_scrublet.log") into pipe_log
 
 //     """
 //     cat ${logfile} > run_scrublet.log
@@ -1250,10 +1253,10 @@ process split_bam {
 //     publishDir path: "${params.output_dir}/", saveAs: save_samp_stats, pattern: "*sample_stats.csv", mode: 'copy'
 
 //     input:
-//         set key, file(scrub_csv), file(cds_object), file(cell_qc), file(dup_stats) from reformat_qc_in
+//         tuple val(key), file(scrub_csv), file(cds_object), file(cell_qc), file(dup_stats) from reformat_qc_in
 
 //     output:
-//         set key, file("temp_fold/*.RDS"), file("temp_fold/*.csv") into rscrub_out
+//         tuple val(key), file("temp_fold/*.RDS"), file("temp_fold/*.csv") into rscrub_out
 //         file("*sample_stats.csv") into sample_stats
 //         file("*collision.txt") into collision
 
@@ -1366,7 +1369,7 @@ process split_bam {
 //     publishDir path: "${params.output_dir}/", saveAs: save_garnett, pattern: "*Garnett.png", mode: 'copy'
 
 //     input:
-//         set key, file(cds_object), file(cell_qc), file(umis_per_cell) from for_gen_qc
+//         tuple val(key), file(cds_object), file(cell_qc), file(umis_per_cell) from for_gen_qc
 
 //     output:
 //         file("*.png") into qc_plots
@@ -1614,7 +1617,7 @@ process split_bam {
 //     publishDir path: "${params.output_dir}/", saveAs: save_txt_for_wrap, pattern: "*.txt", mode: 'copy'
 
 //     input:
-//         set key, file(logfile) from pipe_log
+//         tuple val(key), file(logfile) from pipe_log
 //         file exp_dash from exp_dash_out
 
 //     output:
@@ -2038,9 +2041,26 @@ workflow {
         merge_bams
             .out
             .sample_bams
-            .join(gtf_info)
+            .join(
+                gather_info
+                .out
+                .gtf_info
+            )
     )
 
-    // NOTE, the out.split_bams should be modified
-    // to match the 'mode flatten' used previously
+    // Remove duplicates and assign genes
+    remove_dups_assign_genes(
+        split_bam
+            .out
+            .split_bams
+            .transpose()
+            .map({
+                it -> [
+                    it[0],
+                    it[1],
+                    file("${params.gene_file_prefix}/${it[2]}/latest.exons.bed"),
+                    file("${params.gene_file_prefix}/${it[2]}/latest.genes.bed")
+                ]
+            })
+    )
 }
