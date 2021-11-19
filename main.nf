@@ -414,76 +414,74 @@ process align_reads {
 }
 
 
-// /*************
+/*************
 
-// Process: sort_and_filter
+Process: sort_and_filter
 
-//  Inputs:
-//     name - file id (including lane and split info)
-//     aligned_bam - bam output from star alignment
-//     logfile - running log
-//     cores_sf - number of cores to use
+ Inputs:
+    name - file id (including lane and split info)
+    aligned_bam - bam output from star alignment
+    logfile - running log
 
-//  Outputs:
-//     name - file id (including lane and split info)
-//     sorted_bam - sorted and quality filtered bam
-//     log_piece4 - piece of log to be concatenated for full log
+ Outputs:
+    name - file id (including lane and split info)
+    sorted_bam - sorted and quality filtered bam
+    log_piece4 - piece of log to be concatenated for full log
 
-//  Pass through:
-//     key - sample id
-//     log_piece2 - piece of log to be concatenated for full log
-//     log_piece3 - piece of log to be concatenated for full log
+ Pass through:
+    key - sample id
+    log_piece2 - piece of log to be concatenated for full log
+    log_piece3 - piece of log to be concatenated for full log
 
-//  Summary:
-//     Use samtools to filter for read quality 30 and sort bam
+ Summary:
+    Use samtools to filter for read quality 30 and sort bam
 
-//  Downstream:
-//     merge_bams
-//     combine_logs
+ Downstream:
+    merge_bams
+    combine_logs
 
-//  Published:
+ Published:
 
-//  Notes:
+ Notes:
 
-// *************/
+*************/
 
-// // Cores for sort and filter set at 10 unless limit is lower
-// cores_sf = params.max_cores < 10 ? params.max_cores : 10
+process sort_and_filter {
+    cache 'lenient'
 
-// process sort_and_filter {
-//     cache 'lenient'
-//     cpus cores_sf
+    input:
+        tuple val(key), val(name), path(aligned_bam), path(logpath), path(log_piece2), path(log_piece3)
 
-//     input:
-//         set val(key), val(name), file(aligned_bam), file(logfile), file(log_piece2), file(log_piece3) from aligned_bams
+    output:
+        tuple val(key), path("*.bam"), emit: "sorted_bams"
+        tuple val(key), path(log_piece2), path(log_piece3), path("*_sf.txt"), emit: "log_pieces"
 
-//     output:
-//         set val(key), file("*.bam") into sorted_bams
-//         set val(key), file(log_piece2), file(log_piece3), file("*_sf.txt") into log_pieces
+    """#!/bin/bash
 
-//     """
-//     printf "** Start process 'sort_and_filter' for $aligned_bam at: \$(date)\n\n" > ${name}_piece.log
-//     printf "    Process versions:
-//         \$(samtools --version | tr '\n' ' ')\n\n" >> ${name}_piece.log
-//     printf "    Process command:
-//         samtools view -bh -q 30 -F 4 '$aligned_bam'
-//             | samtools sort -@ $cores_sf - > '${name}.bam'\n\n" >> ${name}_piece.log
+    set -e
+
+    printf "** Start process 'sort_and_filter' for $aligned_bam at: \$(date)\n\n" > ${name}_piece.log
+    printf "    Process versions:
+        \$(samtools --version | tr '\n' ' ')\n\n" >> ${name}_piece.log
+    printf "    Process command:
+        samtools view -bh -q 30 -F 4 '$aligned_bam'
+            | samtools sort -@ ${task.cpus} - > '${name}.bam'\n\n" >> ${name}_piece.log
 
 
-//     samtools view -bh -q 30 -F 4 "$aligned_bam" \
-//         | samtools sort -@ $cores_sf - \
-//         > "${name}.bam"
+    samtools view -bh -q 30 -F 4 "$aligned_bam" \
+        | samtools sort -@ ${task.cpus} - \
+        > "${name}.bam"
 
 
-//     printf "    Process stats:
-//         sort_and_filter starting reads: \$(samtools view -c $aligned_bam)
-//         sort_and_filter ending reads  : \$(samtools view -c ${name}.bam)\n\n" >> ${name}_piece.log
-//     printf "** End process 'sort_and_filter' at: \$(date)\n\n" >> ${name}_piece.log
+    printf "    Process stats:
+        sort_and_filter starting reads: \$(samtools view -c $aligned_bam)
+        sort_and_filter ending reads  : \$(samtools view -c ${name}.bam)\n\n" >> ${name}_piece.log
+    printf "** End process 'sort_and_filter' at: \$(date)\n\n" >> ${name}_piece.log
 
-//     cp ${name}_piece.log ${name}_sf.txt
+    cp ${name}_piece.log ${name}_sf.txt
 
-//     """
-// }
+    """
+}
 
 
 // /*************
@@ -2012,6 +2010,11 @@ workflow {
     // Align reads
     align_reads(
         align_reads_input
+    )
+
+    // Sort and filter
+    sort_and_filter(
+        align_reads.out.aligned_bams
     )
 
 }
