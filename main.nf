@@ -484,235 +484,224 @@ process sort_and_filter {
 }
 
 
-// /*************
+/*************
 
-// Process: combine_logs
+Process: combine_logs
 
-//  Inputs:
-//     log_piece1 - piece of log to be concatenated for full log
-//     log_piece2 - piece of log to be concatenated for full log
-//     log_piece3 - piece of log to be concatenated for full log
-//     log_piece4 - piece of log to be concatenated for full log
+ Inputs:
+    log_piece1 - piece of log to be concatenated for full log
+    log_piece2 - piece of log to be concatenated for full log
+    log_piece3 - piece of log to be concatenated for full log
+    log_piece4 - piece of log to be concatenated for full log
 
-//  Outputs:
-//     logfile - concatenated running log
+ Outputs:
+    logfile - concatenated running log
 
-//  Pass through:
-//     key - sample id
+ Pass through:
+    key - sample id
 
-//  Summary:
-//     Combine the log pieces from the first steps in the correct order
+ Summary:
+    Combine the log pieces from the first steps in the correct order
 
-//  Downstream:
-//     merge_bams
+ Downstream:
+    merge_bams
 
-//  Published:
+ Published:
 
-//  Notes:
+ Notes:
 
-// *************/
+*************/
 
-// log_pieces
-//     .groupTuple()
-//     .set { logs_to_combine }
+process combine_logs {
+    cache 'lenient'
 
-// process combine_logs {
-//     cache 'lenient'
+    input:
+        file log_piece1
+        tuple val(key), path(log_piece2), path(log_piece3), path(log_piece4)
 
-//     input:
-//         file log_piece1
-//         set val(key), file(log_piece2), file(log_piece3), file(log_piece4) from logs_to_combine
+    output:
+        tuple val(key), path("*_pre.log"), emit: "log_premerge"
 
-//     output:
-//         set val(key), file("*_pre.log") into log_premerge
+    """#!/bin/bash
 
-//     """
+    set -euo pipefail
 
-//     cat $log_piece1 $log_piece2 $log_piece3 $log_piece4 > ${key}_pre.log
+    cat $log_piece1 $log_piece2 $log_piece3 $log_piece4 > ${key}_pre.log
 
-//     """
-// }
+    """
+}
 
 
-// /*************
+/*************
 
-// Process: merge_bams
+Process: merge_bams
 
-//  Inputs:
-//     key - sample id
-//     logfile - running log
-//     sorted_bam - sorted and quality filtered bam
+ Inputs:
+    key - sample id
+    logfile - running log
+    sorted_bam - sorted and quality filtered bam
 
-//  Outputs:
-//     key - sample id
-//     merged_bam - sorted and quality filtered bam merged by sample
-//     read_count - file with the total reads listed
-//     logfile - running log
+ Outputs:
+    key - sample id
+    merged_bam - sorted and quality filtered bam merged by sample
+    read_count - file with the total reads listed
+    logfile - running log
 
-//  Pass through:
+ Pass through:
 
-//  Summary:
-//     Use samtools to merge bams from the same sample
-//     Count the number of reads in the sample
+ Summary:
+    Use samtools to merge bams from the same sample
+    Count the number of reads in the sample
 
-//  Downstream:
-//     split_bam
-//     calc_duplication_rate
+ Downstream:
+    split_bam
+    calc_duplication_rate
 
-//  Published:
-//     merged_bam - sorted and quality filtered bam merged by sample
+ Published:
+    merged_bam - sorted and quality filtered bam merged by sample
 
-//  Notes:
+ Notes:
 
-// *************/
+*************/
 
-// cores_merge = params.max_cores < 8 ? params.max_cores : 8
+save_bam = {params.output_dir + "/" + it - ~/.bam/ + "/" + it}
 
-// sorted_bams
-//     .groupTuple()
-//     .set { bams_to_merge }
+process merge_bams {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", saveAs: save_bam, pattern: "*.bam", mode: 'copy'
 
-// log_premerge.join(bams_to_merge).set{for_merge_bams}
+    input:
+        tuple val(key), path(logfile), path(sorted_bam)
 
-// save_bam = {params.output_dir + "/" + it - ~/.bam/ + "/" + it}
+    output:
+        tuple val(key), path("*.bam"), path("merge_bams.log"), emit: "sample_bams"
+        tuple val(key), path("*.read_count.txt"), emit: "read_count"
 
-// process merge_bams {
-//     cache 'lenient'
-//     cpus cores_merge
-//     publishDir path: "${params.output_dir}/", saveAs: save_bam, pattern: "*.bam", mode: 'copy'
+    """#!/bin/bash
 
-//     input:
-//         set key, file(logfile), file(sorted_bam) from for_merge_bams
+    set -euo pipefail
 
-//     output:
-//         set key, file("*.bam"), file("merge_bams.log") into sample_bams
-//         set key, file("*.read_count.txt") into read_count
+    cat ${logfile} > merge_bams.log
+    printf "** Start process 'merge_bams' at: \$(date)\n\n" >> merge_bams.log
+    printf "    Process versions:
+        \$(samtools --version | tr '\n' ' ')\n\n" >> merge_bams.log
+    printf "    Process command:
+        samtools merge ${key}.bam $sorted_bam\n\n" >> merge_bams.log
 
-//     """
-//     cat ${logfile} > merge_bams.log
-//     printf "** Start process 'merge_bams' at: \$(date)\n\n" >> merge_bams.log
-//     printf "    Process versions:
-//         \$(samtools --version | tr '\n' ' ')\n\n" >> merge_bams.log
-//     printf "    Process command:
-//         samtools merge ${key}.bam $sorted_bam\n\n" >> merge_bams.log
+    samtools merge -@ ${task.cpus} ${key}.bam $sorted_bam
 
 
-//     samtools merge -@ $cores_merge ${key}.bam $sorted_bam
+    printf "${key}\t\$(samtools view -c ${key}.bam)" > ${key}.read_count.txt
 
+    printf "** End process 'merge_bams' at: \$(date)\n\n" >> merge_bams.log
+    """
+}
 
-//     printf "${key}\t\$(samtools view -c ${key}.bam)" > ${key}.read_count.txt
 
-//     printf "** End process 'merge_bams' at: \$(date)\n\n" >> merge_bams.log
-//     """
-// }
+/*************
 
+Process: split_bam
 
-// /*************
+ Inputs:
+    merged_bam - sorted and quality filtered bam merged by sample
+    logfile - running log
 
-// Process: split_bam
+ Outputs:
+    merged_bam - sorted and quality filtered bam merged by sample - stops here
+    split_bam - bams split by reference (chromosome)
 
-//  Inputs:
-//     merged_bam - sorted and quality filtered bam merged by sample
-//     logfile - running log
+ Pass through:
+    key - sample id
+    gtf_path - path to gtf info folder
+    logfile - running log
 
-//  Outputs:
-//     merged_bam - sorted and quality filtered bam merged by sample - stops here
-//     split_bam - bams split by reference (chromosome)
+ Summary:
+    Use bamtools split to split bam by reference (chromosome) for speed
+    Combine the small non-chromosomal references to keep file number reasonable
 
-//  Pass through:
-//     key - sample id
-//     gtf_path - path to gtf info folder
-//     logfile - running log
+ Downstream:
+    merge_assignment
+    remove_dups_assign_genes
 
-//  Summary:
-//     Use bamtools split to split bam by reference (chromosome) for speed
-//     Combine the small non-chromosomal references to keep file number reasonable
+ Published:
 
-//  Downstream:
-//     merge_assignment
-//     remove_dups_assign_genes
+ Notes:
+    Potential improvement: find a way to split bams into more evenly sized chunks
 
-//  Published:
+*************/
 
-//  Notes:
-//     Potential improvement: find a way to split bams into more evenly sized chunks
+process split_bam {
+    cache 'lenient'
 
-// *************/
+    input:
+        tuple val(key), path(merged_bam), path(logfile), val(gtf_path)
 
-// sample_bams.join(gtf_info).set{assign_prepped}
+    output:
+        tuple val(key), path("split_bams/*.bam"), val(gtf_path), emit: "split_bams"
+        tuple val(key), path("remove_dups.log"), emit: "split_bam_log"
+        path "${merged_bam}", emit: "output"
 
-// process split_bam {
-//     cache 'lenient'
+    """
+    cat ${logfile} > remove_dups.log
+    printf "** Start processes 'remove duplicates, assign_genes, merge_assignment' at: \$(date)\n\n" >> remove_dups.log
+    printf "    Process versions:
+        \$(bedtools --version)
+        \$(samtools --version | tr '\n' ' ')
+        \$(bamtools --version | grep bamtools)
+        \$(python --version)\n\n" >> remove_dups.log
 
-//     input:
-//         set key, file(merged_bam), file(logfile), val(gtf_path) from assign_prepped
+    echo '    Process command:
+        mkdir split_bams
+        bamtools split -in $merged_bam -reference -stub split_bams/split
 
-//     output:
-//         set key, file("split_bams/*.bam"), val(gtf_path) into split_bams mode flatten
-//         set key, file("remove_dups.log") into split_bam_log
-//         file merged_bam into output
+        rmdup.py --bam in_bam --output_bam out.bam
 
-//     """
-//     cat ${logfile} > remove_dups.log
-//     printf "** Start processes 'remove duplicates, assign_genes, merge_assignment' at: \$(date)\n\n" >> remove_dups.log
-//     printf "    Process versions:
-//         \$(bedtools --version)
-//         \$(samtools --version | tr '\n' ' ')
-//         \$(bamtools --version | grep bamtools)
-//         \$(python --version)\n\n" >> remove_dups.log
+        samtools view -c out.bam > split_bam_umi_count.txt
 
-//     echo '    Process command:
-//         mkdir split_bams
-//         bamtools split -in $merged_bam -reference -stub split_bams/split
+        bedtools bamtobed -i out.bam -split
+                | sort -k1,1 -k2,2n -k3,3n -S 5G
+                > "in_bam.bed"
 
-//         rmdup.py --bam in_bam --output_bam out.bam
+        bedtools map
+            -a in_bam.bed
+            -b exon_index
+            -nonamecheck -s -f 0.95 -c 7 -o distinct -delim "|"
+        | bedtools map
+            -a - -b gene_index
+            -nonamecheck -s -f 0.95 -c 4 -o distinct -delim "|"
+        | sort -k4,4 -k2,2n -k3,3n -S 5G
+        | datamash
+            -g 4 first 1 first 2 last 3 first 5 first 6 collapse 7 collapse 8
+        | assign-reads-to-genes.py gene_index
+        | awk \$3 == "exonic" || \$3 == "intronic" {{
+                split(\$1, arr, "|")
+                printf "%s_%s_%s\t%s\t%s\\n", arr[3], arr[4], arr[5], \$2, \$3
+        }}
+        | sort -k2,2 -k1,1 -S 5G > in_bam.txt
 
-//         samtools view -c out.bam > split_bam_umi_count.txt
+        cat logfile > merge_assignment.log
+        cat split_bed > key.bed
+        sort -m -k1,1 -k2,2 split_gene_assign > key_ga.txt
 
-//         bedtools bamtobed -i out.bam -split
-//                 | sort -k1,1 -k2,2n -k3,3n -S 5G
-//                 > "in_bam.bed"
+        datamash -g 1,2 count 2 < key_ga.txt
+        | gzip > key.gz
+        ' >> remove_dups.log
 
-//         bedtools map
-//             -a in_bam.bed
-//             -b exon_index
-//             -nonamecheck -s -f 0.95 -c 7 -o distinct -delim "|"
-//         | bedtools map
-//             -a - -b gene_index
-//             -nonamecheck -s -f 0.95 -c 4 -o distinct -delim "|"
-//         | sort -k4,4 -k2,2n -k3,3n -S 5G
-//         | datamash
-//             -g 4 first 1 first 2 last 3 first 5 first 6 collapse 7 collapse 8
-//         | assign-reads-to-genes.py gene_index
-//         | awk \$3 == "exonic" || \$3 == "intronic" {{
-//                 split(\$1, arr, "|")
-//                 printf "%s_%s_%s\t%s\t%s\\n", arr[3], arr[4], arr[5], \$2, \$3
-//         }}
-//         | sort -k2,2 -k1,1 -S 5G > in_bam.txt
+    printf "    Process stats:
+        remove_dups starting reads: \$(samtools view -c $merged_bam)" >> remove_dups.log
 
-//         cat logfile > merge_assignment.log
-//         cat split_bed > key.bed
-//         sort -m -k1,1 -k2,2 split_gene_assign > key_ga.txt
 
-//         datamash -g 1,2 count 2 < key_ga.txt
-//         | gzip > key.gz
-//         ' >> remove_dups.log
+    mkdir split_bams
+    bamtools split -in $merged_bam -reference -stub split_bams/split
+    cd split_bams
+    if [[ \$(ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$") ]]; then
+        ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$" | samtools merge split.REFnonstand.bam -b -
+        ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$" | xargs -d"\\n" rm
+        mv split.REFnonstand.bam split.REF_nonstand.bam
+    fi
+    """
 
-//     printf "    Process stats:
-//         remove_dups starting reads: \$(samtools view -c $merged_bam)" >> remove_dups.log
-
-
-//     mkdir split_bams
-//     bamtools split -in $merged_bam -reference -stub split_bams/split
-//     cd split_bams
-//     if [[ \$(ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$") ]]; then
-//         ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$" | samtools merge split.REFnonstand.bam -b -
-//         ls | grep "_[0-9A-Za-z\\.]\\{3,\\}.bam\$" | xargs -d"\\n" rm
-//         mv split.REFnonstand.bam split.REF_nonstand.bam
-//     fi
-//     """
-
-// }
+}
 
 
 // /*************
@@ -764,10 +753,10 @@ process sort_and_filter {
 //     cache 'lenient'
 
 //     input:
-//         set key, file(split_bam), val(gtf_path) from split_bams
+//         set key, path(split_bam), val(gtf_path) from split_bams
 
 //     output:
-//         set key, file("*.bed"), file("*_ga.txt"), file("*_umi_count.txt") into remove_dup_part_out
+//         set key, path("*.bed"), path("*_ga.txt"), path("*_umi_count.txt") into remove_dup_part_out
 
 //     """
 //     rmdup.py --bam $split_bam --output_bam out.bam
@@ -2017,4 +2006,41 @@ workflow {
         align_reads.out.aligned_bams
     )
 
+    // Group the outputs of sort_and_filter by key
+    sort_and_filter
+        .out
+        .log_pieces
+        .groupTuple()
+        .set { logs_to_combine }
+
+    sort_and_filter
+        .out
+        .sorted_bams
+        .groupTuple()
+        .set { bams_to_merge }
+
+    // Combine logs
+    combine_logs(
+        check_sample_sheet.out.log_piece1,
+        logs_to_combine
+    )
+
+    // Merge BAMs
+    merge_bams(
+        combine_logs
+            .out
+            .log_premerge
+            .join(bams_to_merge)
+    )
+
+    // Split BAMs
+    split_bam(
+        merge_bams
+            .out
+            .sample_bams
+            .join(gtf_info)
+    )
+
+    // NOTE, the out.split_bams should be modified
+    // to match the 'mode flatten' used previously
 }
