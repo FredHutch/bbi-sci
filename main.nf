@@ -1061,7 +1061,7 @@ process make_cds {
     cache 'lenient'
 
     input:
-        tuple val(key), path(cell_data), path(umi_matrix), path(gene_data), val(gtf_path), path(logfile) from mat_output
+        tuple val(key), path(cell_data), path(umi_matrix), path(gene_data), val(gtf_path), path(logfile)
 
     output:
         tuple val(key), path("*for_scrub.mtx"), path("*.RDS"), path("*cell_qc.csv"), path("make_cds.log"), emit: "cds_out"
@@ -1258,7 +1258,7 @@ process reformat_qc {
     publishDir path: "${params.output_dir}/", saveAs: save_samp_stats, pattern: "*sample_stats.csv", mode: 'copy'
 
     input:
-        tuple val(key), path(scrub_csv), path(cds_object), path(cell_qc), path(dup_stats) from reformat_qc_in
+        tuple val(key), path(scrub_csv), path(cds_object), path(cell_qc), path(dup_stats)
 
     output:
         tuple val(key), path("temp_fold/*.RDS"), path("temp_fold/*.csv"), emit: "rscrub_out"
@@ -1323,483 +1323,494 @@ process reformat_qc {
 }
 
 
-// /*************
+/*************
 
-// Process: generate_qc_metrics
+Process: generate_qc_metrics
 
-//  Inputs:
-//     key - sample id
-//     params.umi_cutoff
-//     cds_object - cds object in RDS format
-//     cell_qc - csv of cell quality control information
-//     umis_per_cell - count of umis per cell
+ Inputs:
+    key - sample id
+    params.umi_cutoff
+    cds_object - cds object in RDS format
+    cell_qc - csv of cell quality control information
+    umis_per_cell - count of umis per cell
 
-//  Outputs:
-//     cutoff - not currently used
-//     umap_png - png sample UMAP
-//     knee_png - png sample knee plot
-//     qc_png - png of cell qc stats
+ Outputs:
+    cutoff - not currently used
+    umap_png - png sample UMAP
+    knee_png - png sample knee plot
+    qc_png - png of cell qc stats
 
-//  Pass through:
+ Pass through:
 
-//  Summary:
-//     Generate a bunch of qc metrics and plots - generate_qc.R
+ Summary:
+    Generate a bunch of qc metrics and plots - generate_qc.R
 
-//  Downstream:
-//     generate_dashboard
+ Downstream:
+    generate_dashboard
 
-//  Published:
-//     umap_png - png sample UMAP
-//     knee_png - png sample knee plot
-//     qc_png - png of cell qc stats
+ Published:
+    umap_png - png sample UMAP
+    knee_png - png sample knee plot
+    qc_png - png of cell qc stats
 
-//  Notes:
-//     Need to test umi cutoff here and in cds function
-//     Need to either remove or use output cutoff
+ Notes:
+    Need to test umi cutoff here and in cds function
+    Need to either remove or use output cutoff
 
-// *************/
+*************/
 
-// for_gen_qc = rscrub_out.join(umis_per_cell)
-// save_knee = {params.output_dir + "/" + it - ~/_knee_plot.png/ + "/" + it}
-// save_umap = {params.output_dir + "/" + it - ~/_UMAP.png/ + "/" + it}
-// save_cellqc = {params.output_dir + "/" + it - ~/_cell_qc.png/ + "/" + it}
-// save_garnett = {params.output_dir + "/" + it.split("_")[0] + "/" + it}
+save_knee = {params.output_dir + "/" + it - ~/_knee_plot.png/ + "/" + it}
+save_umap = {params.output_dir + "/" + it - ~/_UMAP.png/ + "/" + it}
+save_cellqc = {params.output_dir + "/" + it - ~/_cell_qc.png/ + "/" + it}
+save_garnett = {params.output_dir + "/" + it.split("_")[0] + "/" + it}
 
-// process generate_qc_metrics {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/", saveAs: save_umap, pattern: "*UMAP.png", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_knee, pattern: "*knee_plot.png", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_cellqc, pattern: "*cell_qc.png", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_garnett, pattern: "*Garnett.png", mode: 'copy'
+process generate_qc_metrics {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", saveAs: save_umap, pattern: "*UMAP.png", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_knee, pattern: "*knee_plot.png", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_cellqc, pattern: "*cell_qc.png", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_garnett, pattern: "*Garnett.png", mode: 'copy'
 
-//     input:
-//         tuple val(key), path(cds_object), path(cell_qc), path(umis_per_cell) from for_gen_qc
+    input:
+        tuple val(key), path(cds_object), path(cell_qc), path(umis_per_cell)
 
-//     output:
-//         path("*.png") into qc_plots
-//         path("*.txt") into cutoff
+    output:
+        path("*.png"), emit: "qc_plots"
+        path("*.txt"), emit: "cutoff"
 
-//     """
-//     generate_qc.R\
-//         $cds_object $umis_per_cell $key \
-//         --specify_cutoff $params.umi_cutoff\
+    """#!/bin/bash
 
-//     """
-// }
+    set -euo pipefail
 
-// /*************
+    generate_qc.R\
+        $cds_object $umis_per_cell $key \
+        --specify_cutoff $params.umi_cutoff\
 
-// Process: zip_up_sample_stats
+    """
+}
 
-//  Inputs:
-//     sample_stats - csv with sample-wise statistics - collected
+/*************
 
-//  Outputs:
-//     all_sample_stats - concatenated table of sample stats from all samples
+Process: zip_up_sample_stats
 
-//  Pass through:
+ Inputs:
+    sample_stats - csv with sample-wise statistics - collected
 
-//  Summary:
-//     Concatenate duplication information into one table
+ Outputs:
+    all_sample_stats - concatenated table of sample stats from all samples
 
-//  Downstream:
-//     generate_dashboard
+ Pass through:
 
-//  Published:
-//     all_sample_stats - concatenated table of sample stats from all samples
+ Summary:
+    Concatenate duplication information into one table
 
-//  Notes:
+ Downstream:
+    generate_dashboard
 
-// *************/
+ Published:
+    all_sample_stats - concatenated table of sample stats from all samples
 
-// process zip_up_sample_stats {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/", pattern: "all_sample_stats.csv", mode: 'copy'
+ Notes:
 
-//     input:
-//         file files from sample_stats.collect()
+*************/
 
-//     output:
-//         file "*ll_sample_stats.csv" into all_sample_stats
+process zip_up_sample_stats {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", pattern: "all_sample_stats.csv", mode: 'copy'
 
-//     """
+    input:
+        path files
 
-//      sed -s 1d $files > all_sample_stats.csv
+    output:
+        path "*ll_sample_stats.csv", emit: "all_sample_stats"
 
-//     """
-// }
+    """#!/bin/bash
 
+    set -euo pipefail
 
-// /*************
+    sed -s 1d $files > all_sample_stats.csv
 
-// Process: calc_cell_totals
+    """
+}
 
-//  Inputs:
-//     cell_qc - csv of cell quality control information - collected
 
-//  Outputs:
-//     cell_counts - table cell totals above set UMI thresholds for all samples
+/*************
 
-//  Pass through:
+Process: calc_cell_totals
 
-//  Summary:
-//     Count cell totals above set UMI thresholds for all samples
+ Inputs:
+    cell_qc - csv of cell quality control information - collected
 
-//  Downstream:
-//     generate_dashboard
+ Outputs:
+    cell_counts - table cell totals above set UMI thresholds for all samples
 
-//  Published:
+ Pass through:
 
-//  Notes:
+ Summary:
+    Count cell totals above set UMI thresholds for all samples
 
-// *************/
+ Downstream:
+    generate_dashboard
 
-// process calc_cell_totals {
-//     cache 'lenient'
+ Published:
 
-//     input:
-//         file cell_qc from cell_qcs.collect()
+ Notes:
 
-//     output:
-//         file "*.txt" into cell_counts
+*************/
 
-//     """
+process calc_cell_totals {
+    cache 'lenient'
 
-//     for f in $cell_qc
-//     do
-//       awk 'BEGIN {FS=","}; \$2>100{c++} END{print FILENAME, "100", c-1}' \$f >> cell_counts.txt
-//       awk 'BEGIN {FS=","}; \$2>500{c++} END{print FILENAME, "500", c-1}' \$f >> cell_counts.txt
-//       awk 'BEGIN {FS=","}; \$2>1000{c++} END{print FILENAME, "1000", c-1}' \$f >> cell_counts.txt
-//     done
+    input:
+        path cell_qc
 
-//     """
+    output:
+        path "*.txt", emit: "cell_counts"
 
-// }
+    """#!/bin/bash
 
+    set -euo pipefail
 
-// /*************
+    for f in $cell_qc
+    do
+      awk 'BEGIN {FS=","}; \$2>100{c++} END{print FILENAME, "100", c-1}' \$f >> cell_counts.txt
+      awk 'BEGIN {FS=","}; \$2>500{c++} END{print FILENAME, "500", c-1}' \$f >> cell_counts.txt
+      awk 'BEGIN {FS=","}; \$2>1000{c++} END{print FILENAME, "1000", c-1}' \$f >> cell_counts.txt
+    done
 
-// Process: collapse_collision
+    """
 
-//  Inputs:
-//     collision - file containing collision rate if barnyard sample - collected
+}
 
-//  Outputs:
-//     all_collision - concatenate collision values for all samples (all NA except Barnyard)
 
-//  Pass through:
+/*************
 
-//  Summary:
-//     Concatenate collision values for all samples
+Process: collapse_collision
 
-//  Downstream:
-//     generate_dashboard
+ Inputs:
+    collision - file containing collision rate if barnyard sample - collected
 
-//  Published:
+ Outputs:
+    all_collision - concatenate collision values for all samples (all NA except Barnyard)
 
-//  Notes:
+ Pass through:
 
-// *************/
+ Summary:
+    Concatenate collision values for all samples
 
-// process collapse_collision {
-//     cache 'lenient'
+ Downstream:
+    generate_dashboard
 
-//     input:
-//         file col_file from collision.collect()
+ Published:
 
-//     output:
-//         file "*.txt" into all_collision
+ Notes:
 
-//     """
+*************/
 
-//     cat $col_file > all_collision.txt
+process collapse_collision {
+    cache 'lenient'
 
-//     """
-// }
+    input:
+        path col_file
 
+    output:
+        path "*.txt", emit: "all_collision"
 
-// /*************
+    """#!/bin/bash
 
-// Process: generate_dashboard
+    set -e
 
-//  Inputs:
-//     cell_counts - table cell totals above set UMI thresholds for all samples
-//     all_collision - concatenate collision values for all samples (all NA except Barnyard)
-//     all_sample_stats - concatenated table of sample stats from all samples
-//     params.output_dir
-//     umap_png - png sample UMAP - combined as qc_plots
-//     knee_png - png sample knee plot - combined as qc_plots
-//     qc_png - png of cell qc stats - combined as qc_plots
-//     scrublet_png - png histogram of scrublet scores
-//     params.garnett_file
+    cat $col_file > all_collision.txt
 
-//  Outputs:
-//     exp_dash - experimental dashboard
+    """
+}
 
-//  Pass through:
 
-//  Summary:
-//     Collect plots and generate data file for experimental dashboard
-//     Assemble dashboard
+/*************
 
-//  Downstream:
-//     generate_summary_log
+Process: generate_dashboard
 
-//  Published:
-//     exp_dash - experimental dashboard
+ Inputs:
+    cell_counts - table cell totals above set UMI thresholds for all samples
+    all_collision - concatenate collision values for all samples (all NA except Barnyard)
+    all_sample_stats - concatenated table of sample stats from all samples
+    params.output_dir
+    umap_png - png sample UMAP - combined as qc_plots
+    knee_png - png sample knee plot - combined as qc_plots
+    qc_png - png of cell qc stats - combined as qc_plots
+    scrublet_png - png histogram of scrublet scores
+    params.garnett_file
 
-//  Notes:
+ Outputs:
+    exp_dash - experimental dashboard
 
-// *************/
+ Pass through:
 
-// process generate_dashboard {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/", pattern: "exp_dash", mode: 'copy'
+ Summary:
+    Collect plots and generate data file for experimental dashboard
+    Assemble dashboard
 
-//     input:
-//         file all_sample_stats
-//         file cell_counts
-//         file all_collision
-//         file plots from qc_plots.collect()
-//         file scrublet_png from scrub_pngs.collect()
+ Downstream:
+    generate_summary_log
 
-//     output:
-//         file exp_dash into exp_dash_out
+ Published:
+    exp_dash - experimental dashboard
 
-//     """
-//     generate_dash_data.R $all_sample_stats $params.output_dir $cell_counts $all_collision $params.garnett_file
+ Notes:
 
-//     mkdir exp_dash
-//     cp -R $baseDir/bin/skeleton_dash/* exp_dash/
-//     mv *.png exp_dash/img/
+*************/
 
-//     mv *.js exp_dash/js/
+process generate_dashboard {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", pattern: "exp_dash", mode: 'copy'
 
-//     """
-// }
+    input:
+        path all_sample_stats
+        path cell_counts
+        path all_collision
+        path plots
+        path scrublet_png
+        path garnett_file
 
+    output:
+        path exp_dash, emit: "exp_dash_out"
 
-// /*************
+    """#!/bin/bash
 
-// Process: finish_log
+    set -euo pipefail
 
-//  Inputs:
-//     key - sample id
-//     logfile - running log
-//     exp_dash - experimental dashboard - input so runs last
+    generate_dash_data.R $all_sample_stats $params.project_name $cell_counts $all_collision $garnett_file
 
-//  Outputs:
-//     full_log - Final full pipeline log
-//     summary_log - Summary log
-//     log_data - Logging info for dashboards
+    mkdir exp_dash
+    cp -R $baseDir/bin/skeleton_dash/* exp_dash/
+    mv *.png exp_dash/img/
 
-//  Pass through:
+    mv *.js exp_dash/js/
 
-//  Summary:
-//     Add parameter info to front of pipeline - allows restart when changing minor parameters
-//     Generate summary log
-//     Generate log info for dashboards
+    """
+}
 
-//  Downstream:
-//     zip_up_log_data
 
-//  Published:
-//     full_log - Final full pipeline log
-//     summary_log - Summary log
-//     log_data - Logging info for dashboards
+/*************
 
-//  Notes:
+Process: finish_log
 
-// *************/
+ Inputs:
+    key - sample id
+    logfile - running log
+    exp_dash - experimental dashboard - input so runs last
 
-// save_logs = {params.output_dir + "/" + it - ~/_read_metrics.log/ - ~/_full.log/ + "/" + it}
-// save_txt_for_wrap = {params.output_dir + "/" + it - ~/_log_data.txt/ + "/" + it}
+ Outputs:
+    full_log - Final full pipeline log
+    summary_log - Summary log
+    log_data - Logging info for dashboards
 
-// process finish_log {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/", saveAs: save_logs, pattern: "*.log", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_txt_for_wrap, pattern: "*.txt", mode: 'copy'
+ Pass through:
 
-//     input:
-//         tuple val(key), path(logfile) from pipe_log
-//         file exp_dash from exp_dash_out
+ Summary:
+    Add parameter info to front of pipeline - allows restart when changing minor parameters
+    Generate summary log
+    Generate log info for dashboards
 
-//     output:
-//         path("*_full.log") into full_log
-//         path("*_read_metrics.log") into summary_log
-//         path("*log_data.txt") into log_txt_for_wrap
+ Downstream:
+    zip_up_log_data
 
-//     """
-//     head -n 2 ${logfile} > ${key}_full.log
-//     printf "Nextflow version: $nextflow.version\n" >> ${key}_full.log
-//     printf "Pipeline version: $workflow.manifest.version\n" >> ${key}_full.log
-//     printf "Git Repository, Version, Commit ID, Session ID: $workflow.repository, $workflow.revision, $workflow.commitId, $workflow.sessionId\n\n" >> ${key}_full.log
-//     printf "Command:\n$workflow.commandLine\n\n" >> ${key}_full.log
-//     printf "***** PARAMETERS *****: \n\n" >> ${key}_full.log
-//     printf "    params.run_dir:               $params.run_dir\n" >> ${key}_full.log
-//     printf "    params.output_dir:            $params.output_dir\n" >> ${key}_full.log
-//     printf "    params.sample_sheet:          $params.sample_sheet\n" >> ${key}_full.log
-//     printf "    params.demux_out:             $params.demux_out\n" >> ${key}_full.log
-//     printf "    params.level:                 $params.level\n" >> ${key}_full.log
-//     printf "    params.max_cores:             $params.max_cores\n" >> ${key}_full.log
-//     printf "    params.samples:               $params.samples\n" >> ${key}_full.log
-//     printf "    params.star_file:             $params.star_file\n" >> ${key}_full.log
-//     printf "    params.gene_file:             $params.gene_file\n" >> ${key}_full.log
-//     printf "    params.umi_cutoff:            $params.umi_cutoff\n" >> ${key}_full.log
-//     printf "    params.rt_barcode_file:       $params.rt_barcode_file\n" >> ${key}_full.log
-//     printf "    params.hash_list:             $params.hash_list\n" >> ${key}_full.log
-//     printf "    params.max_wells_per_sample:  $params.max_wells_per_sample\n\n" >> ${key}_full.log
-//     printf "    params.garnett_file:          $params.garnett_file\n\n" >> ${key}_full.log
-//     printf "    params.skip_doublet_detect:   $params.skip_doublet_detect\n\n" >> ${key}_full.log
+ Published:
+    full_log - Final full pipeline log
+    summary_log - Summary log
+    log_data - Logging info for dashboards
 
-//     tail -n +2 ${logfile} >> ${key}_full.log
-//     printf "\n** End processes generate qc metrics and dashboard at: \$(date)\n\n" >> ${key}_full.log
-//     printf "***** END PIPELINE *****: \n\n" >> ${key}_full.log
-//     filename=${key}_full.log
+ Notes:
 
-//     # Trimming:
-//     trim_start=`cat \$filename | grep 'sequences processed in total' | awk -F ' ' '{sum += \$1} END {print sum}'`
-//     trim_lost=`cat \$filename | grep 'Sequences removed because they became shorter' | awk -F ' ' '{sum += \$14} END {print sum}'`
-//     trim_end=\$((\$trim_start - \$trim_lost))
+*************/
 
-//     # Alignment:
-//     align_start=`cat \$filename | grep 'Number of input reads' | awk -F '|' '{sum += \$2} END {print sum}'`
-//     align_mapped=`cat \$filename | grep 'Uniquely mapped reads number' | awk -F '|' '{sum += \$2} END {print sum}'`
-//     align_totals=(\$(cat \$filename | grep 'Number of input reads' | cut -d "|" -f 2 | awk '{print \$1}'))
-//     align_multimapped=`cat \$filename | grep 'Number of reads mapped to multiple loci' |  awk -F '|' '{sum += \$2} END {print sum}'`
-//     align_too_short_arr=(\$(cat \$filename | grep 'unmapped: too short' | cut -d "|" -f 2 | tr '%' ' ' | awk '{\$1=\$1/100;print}'))
-//     align_too_short=`a=0
-//     for i in \${align_too_short_arr[@]}
-//     do
-//         echo "\${align_too_short_arr[\$a]} * \${align_totals[\$a]}" | bc
-//         a=\$((a+1))
-//     done | awk '{sum += \$1} END {printf "%1.0f", sum}'`
+save_logs = {params.output_dir + "/" + it - ~/_read_metrics.log/ - ~/_full.log/ + "/" + it}
+save_txt_for_wrap = {params.output_dir + "/" + it - ~/_log_data.txt/ + "/" + it}
 
-//     # Sort and Filter:
-//     sf_start=`cat \$filename | grep 'sort_and_filter starting reads' | awk -F ':' '{sum += \$2} END {print sum}'`
-//     sf_end=`cat \$filename | grep 'sort_and_filter ending reads' | awk -F ':' '{sum += \$2} END {print sum}'`
+process finish_log {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", saveAs: save_logs, pattern: "*.log", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_txt_for_wrap, pattern: "*.txt", mode: 'copy'
 
-//     # Dups:
-//     dup_start=`cat \$filename | grep 'remove_dups starting reads' | awk -F ':' '{sum += \$2} END {print sum}'`
-//     dup_end=`cat \$filename | grep 'remove_dups ending reads' | awk -F ':' '{sum += \$2} END {print sum}'`
+    input:
+        tuple val(key), path(logfile)
+        path exp_dash 
 
-//     # Assignment:
-//     assigned_exonic=`cat \$filename | grep '    exonic     ' | awk -F ' ' '{sum += \$2} END {print sum}'`
-//     assigned_intronic=`cat \$filename | grep '    intronic     ' | awk -F ' ' '{sum += \$2} END {print sum}'`
-//     assigned_end=\$((\$assigned_exonic + \$assigned_intronic))
+    output:
+        path "*_full.log", emit: "full_log"
+        path "*_read_metrics.log", emit: "summary_log"
+        path "*log_data.txt", emit: "log_txt_for_wrap"
 
-//     # In real cells:
-//     reads_in_cells=`cat \$filename | grep 'Total reads in cells with > 100 reads' | awk -F ':' '{sum += \$2} END {print sum}'`
+    """
+    head -n 2 ${logfile} > ${key}_full.log
+    printf "Nextflow version: $nextflow.version\n" >> ${key}_full.log
+    printf "Pipeline version: $workflow.manifest.version\n" >> ${key}_full.log
+    printf "Git Repository, Version, Commit ID, Session ID: $workflow.repository, $workflow.revision, $workflow.commitId, $workflow.sessionId\n\n" >> ${key}_full.log
+    printf "Command:\n$workflow.commandLine\n\n" >> ${key}_full.log
+    printf "***** PARAMETERS *****: \n\n" >> ${key}_full.log
+    printf "    params.run_dir:               $params.run_dir\n" >> ${key}_full.log
+    printf "    params.output_dir:            $params.output_dir\n" >> ${key}_full.log
+    printf "    params.sample_sheet:          $params.sample_sheet\n" >> ${key}_full.log
+    printf "    params.demux_out:             $params.demux_out\n" >> ${key}_full.log
+    printf "    params.level:                 $params.level\n" >> ${key}_full.log
+    printf "    params.max_cores:             $params.max_cores\n" >> ${key}_full.log
+    printf "    params.samples:               $params.samples\n" >> ${key}_full.log
+    printf "    params.star_file:             $params.star_file\n" >> ${key}_full.log
+    printf "    params.gene_file:             $params.gene_file\n" >> ${key}_full.log
+    printf "    params.umi_cutoff:            $params.umi_cutoff\n" >> ${key}_full.log
+    printf "    params.rt_barcode_file:       $params.rt_barcode_file\n" >> ${key}_full.log
+    printf "    params.hash_list:             $params.hash_list\n" >> ${key}_full.log
+    printf "    params.max_wells_per_sample:  $params.max_wells_per_sample\n\n" >> ${key}_full.log
+    printf "    params.garnett_file:          $params.garnett_file\n\n" >> ${key}_full.log
+    printf "    params.skip_doublet_detect:   $params.skip_doublet_detect\n\n" >> ${key}_full.log
 
-//     printf "
-//             \\"${key}\\": {
-//             \\"sample\\": \\"${key}\\",
-//             \\"alignment_start\\" : \\"\$align_start\\",
-//             \\"alignment_mapped\\" : \\"\$align_mapped\\",
-//             \\"align_multimapped\\" : \\"\$align_multimapped\\",
-//             \\"align_too_short\\" : \\"\$align_too_short\\",
-//             \\"sf_start\\" : \\"\$sf_start\\",
-//             \\"sf_end\\" : \\"\$sf_end\\",
-//             \\"dup_start\\" : \\"\$dup_start\\",
-//             \\"dup_end\\" : \\"\$dup_end\\",
-//             \\"assigned_exonic\\" : \\"\$assigned_exonic\\",
-//             \\"assigned_intronic\\" : \\"\$assigned_intronic\\",
-//             \\"reads_in_cells\\" : \\"\$reads_in_cells\\" }
-//       " > ${key}_log_data.txt
+    tail -n +2 ${logfile} >> ${key}_full.log
+    printf "\n** End processes generate qc metrics and dashboard at: \$(date)\n\n" >> ${key}_full.log
+    printf "***** END PIPELINE *****: \n\n" >> ${key}_full.log
+    filename=${key}_full.log
 
+    # Trimming:
+    trim_start=`cat \$filename | grep 'sequences processed in total' | awk -F ' ' '{sum += \$1} END {print sum}'`
+    trim_lost=`cat \$filename | grep 'Sequences removed because they became shorter' | awk -F ' ' '{sum += \$14} END {print sum}'`
+    trim_end=\$((\$trim_start - \$trim_lost))
 
-//     printf "***** PIPELINE READ STATS *****: \n\n" >> ${key}_read_metrics.log
+    # Alignment:
+    align_start=`cat \$filename | grep 'Number of input reads' | awk -F '|' '{sum += \$2} END {print sum}'`
+    align_mapped=`cat \$filename | grep 'Uniquely mapped reads number' | awk -F '|' '{sum += \$2} END {print sum}'`
+    align_totals=(\$(cat \$filename | grep 'Number of input reads' | cut -d "|" -f 2 | awk '{print \$1}'))
+    align_multimapped=`cat \$filename | grep 'Number of reads mapped to multiple loci' |  awk -F '|' '{sum += \$2} END {print sum}'`
+    align_too_short_arr=(\$(cat \$filename | grep 'unmapped: too short' | cut -d "|" -f 2 | tr '%' ' ' | awk '{\$1=\$1/100;print}'))
+    align_too_short=`a=0
+    for i in \${align_too_short_arr[@]}
+    do
+        echo "\${align_too_short_arr[\$a]} * \${align_totals[\$a]}" | bc
+        a=\$((a+1))
+    done | awk '{sum += \$1} END {printf "%1.0f", sum}'`
 
-//     printf "%20s %20s %20s %20s %20s\n" "Process" "Starting reads" "Ending reads" "% lost" "% of total lost" >> ${key}_read_metrics.log
-//     printf "========================================================================================================\n" >> ${key}_read_metrics.log
-//     printf "%20s %20s %20s %20.2f %20.2f\n" "Trimming" \$trim_start \$trim_end \$(echo "(\$trim_start - \$trim_end)/\$trim_start * 100" | bc -l ) \$(echo "(\$trim_start - \$trim_end)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
-//     printf "%20s %20s %20s %20.2f %20.2f\n" "Alignment" \$align_start \$sf_start \$(echo "(\$align_start - \$sf_start)/\$align_start * 100" | bc -l ) \$(echo "(\$align_start - \$sf_start)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
-//     printf "%20s %20s %20s %20.2f %20.2f\n" "Filtering" \$sf_start \$sf_end \$(echo "(\$sf_start - \$sf_end)/\$sf_start * 100" | bc -l ) \$(echo "(\$sf_start - \$sf_end)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
-//     printf "%20s %20s %20s %20.2f %20.2f\n" "Deduplication" \$dup_start \$dup_end \$(echo "(\$dup_start - \$dup_end)/\$dup_start * 100" | bc -l ) \$(echo "(\$dup_start - \$dup_end)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
-//     printf "%20s %20s %20s %20.2f %20.2f\n" "Gene assignment" \$dup_end \$assigned_end \$(echo "(\$dup_end - \$assigned_end)/\$dup_end * 100" | bc -l ) \$(echo "(\$dup_end - \$assigned_end)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
+    # Sort and Filter:
+    sf_start=`cat \$filename | grep 'sort_and_filter starting reads' | awk -F ':' '{sum += \$2} END {print sum}'`
+    sf_end=`cat \$filename | grep 'sort_and_filter ending reads' | awk -F ':' '{sum += \$2} END {print sum}'`
 
-//     printf "\nAlignment details: \n" >> ${key}_read_metrics.log
-//     printf "%25s %20s %20s\n" "" "Count" "Percent"  >> ${key}_read_metrics.log
-//     printf "========================================================================================================\n" >> ${key}_read_metrics.log
-//     printf "%25s %20s %20s\n" "Total reads processed:" \$align_start "" >> ${key}_read_metrics.log
-//     printf "%25s %20s %20.2f\n" "Reads uniquely mapped:" \$align_mapped \$(echo "(\$align_mapped)/\$align_start * 100" | bc -l ) >> ${key}_read_metrics.log
-//     printf "%25s %20s %20.2f\n" "Reads multi-mapped:" \$align_multimapped \$(echo "(\$align_multimapped)/\$align_start * 100" | bc -l )  >> ${key}_read_metrics.log
-//     printf "%25s %20s %20.2f\n" "Reads too short:" \$align_too_short \$(echo "(\$align_too_short)/\$align_start * 100" | bc -l ) >> ${key}_read_metrics.log
+    # Dups:
+    dup_start=`cat \$filename | grep 'remove_dups starting reads' | awk -F ':' '{sum += \$2} END {print sum}'`
+    dup_end=`cat \$filename | grep 'remove_dups ending reads' | awk -F ':' '{sum += \$2} END {print sum}'`
 
+    # Assignment:
+    assigned_exonic=`cat \$filename | grep '    exonic     ' | awk -F ' ' '{sum += \$2} END {print sum}'`
+    assigned_intronic=`cat \$filename | grep '    intronic     ' | awk -F ' ' '{sum += \$2} END {print sum}'`
+    assigned_end=\$((\$assigned_exonic + \$assigned_intronic))
 
-//     cat ${key}_read_metrics.log >> ${key}_full.log
+    # In real cells:
+    reads_in_cells=`cat \$filename | grep 'Total reads in cells with > 100 reads' | awk -F ':' '{sum += \$2} END {print sum}'`
 
-//     """
+    printf "
+            \\"${key}\\": {
+            \\"sample\\": \\"${key}\\",
+            \\"alignment_start\\" : \\"\$align_start\\",
+            \\"alignment_mapped\\" : \\"\$align_mapped\\",
+            \\"align_multimapped\\" : \\"\$align_multimapped\\",
+            \\"align_too_short\\" : \\"\$align_too_short\\",
+            \\"sf_start\\" : \\"\$sf_start\\",
+            \\"sf_end\\" : \\"\$sf_end\\",
+            \\"dup_start\\" : \\"\$dup_start\\",
+            \\"dup_end\\" : \\"\$dup_end\\",
+            \\"assigned_exonic\\" : \\"\$assigned_exonic\\",
+            \\"assigned_intronic\\" : \\"\$assigned_intronic\\",
+            \\"reads_in_cells\\" : \\"\$reads_in_cells\\" }
+      " > ${key}_log_data.txt
 
-// }
 
-// /*************
+    printf "***** PIPELINE READ STATS *****: \n\n" >> ${key}_read_metrics.log
 
-// Process: zip_up_log_data
+    printf "%20s %20s %20s %20s %20s\n" "Process" "Starting reads" "Ending reads" "% lost" "% of total lost" >> ${key}_read_metrics.log
+    printf "========================================================================================================\n" >> ${key}_read_metrics.log
+    printf "%20s %20s %20s %20.2f %20.2f\n" "Trimming" \$trim_start \$trim_end \$(echo "(\$trim_start - \$trim_end)/\$trim_start * 100" | bc -l ) \$(echo "(\$trim_start - \$trim_end)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
+    printf "%20s %20s %20s %20.2f %20.2f\n" "Alignment" \$align_start \$sf_start \$(echo "(\$align_start - \$sf_start)/\$align_start * 100" | bc -l ) \$(echo "(\$align_start - \$sf_start)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
+    printf "%20s %20s %20s %20.2f %20.2f\n" "Filtering" \$sf_start \$sf_end \$(echo "(\$sf_start - \$sf_end)/\$sf_start * 100" | bc -l ) \$(echo "(\$sf_start - \$sf_end)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
+    printf "%20s %20s %20s %20.2f %20.2f\n" "Deduplication" \$dup_start \$dup_end \$(echo "(\$dup_start - \$dup_end)/\$dup_start * 100" | bc -l ) \$(echo "(\$dup_start - \$dup_end)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
+    printf "%20s %20s %20s %20.2f %20.2f\n" "Gene assignment" \$dup_end \$assigned_end \$(echo "(\$dup_end - \$assigned_end)/\$dup_end * 100" | bc -l ) \$(echo "(\$dup_end - \$assigned_end)/\$trim_start * 100" | bc -l ) >> ${key}_read_metrics.log
 
-//  Inputs:
-//     summary_log - collected summary log files
-//     full_log - collected full log files
+    printf "\nAlignment details: \n" >> ${key}_read_metrics.log
+    printf "%25s %20s %20s\n" "" "Count" "Percent"  >> ${key}_read_metrics.log
+    printf "========================================================================================================\n" >> ${key}_read_metrics.log
+    printf "%25s %20s %20s\n" "Total reads processed:" \$align_start "" >> ${key}_read_metrics.log
+    printf "%25s %20s %20.2f\n" "Reads uniquely mapped:" \$align_mapped \$(echo "(\$align_mapped)/\$align_start * 100" | bc -l ) >> ${key}_read_metrics.log
+    printf "%25s %20s %20.2f\n" "Reads multi-mapped:" \$align_multimapped \$(echo "(\$align_multimapped)/\$align_start * 100" | bc -l )  >> ${key}_read_metrics.log
+    printf "%25s %20s %20.2f\n" "Reads too short:" \$align_too_short \$(echo "(\$align_too_short)/\$align_start * 100" | bc -l ) >> ${key}_read_metrics.log
 
-//  Outputs:
-//     log_js - Logging info in a js format for dashboards
 
-//  Pass through:
+    cat ${key}_read_metrics.log >> ${key}_full.log
 
-//  Summary:
-//     Generate log data js file for dashboard
+    """
 
-//  Downstream:
-//     End
+}
 
-//  Published:
-//     log_data.js - Logging info for dashboards
+/*************
 
-//  Notes:
+Process: zip_up_log_data
 
-// *************/
+ Inputs:
+    summary_log - collected summary log files
+    full_log - collected full log files
 
-// process zip_up_log_data {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/exp_dash/js/", pattern: "*.js", mode: 'copy'
+ Outputs:
+    log_js - Logging info in a js format for dashboards
 
-//     input:
-//         file summary_log from summary_log.collect()
-//         file full_log from full_log.collect()
+ Pass through:
 
-//     output:
-//         file "*.js" into log_js
+ Summary:
+    Generate log data js file for dashboard
 
-//     """
+ Downstream:
+    End
 
-//     echo 'const log_data = {' > log_data.js
-//     for file in $summary_log
-//     do
-//         samp_name=\$(basename \$file | sed 's/_read_metrics.log//')
-//         echo "\\"\$samp_name\\" :  \\`" >> log_data.js
-//         cat \$file >> log_data.js
-//         echo "\\`," >> log_data.js
-//     done
-//     sed -i '\$ s/,\$//' log_data.js
-//     echo '}' >> log_data.js
+ Published:
+    log_data.js - Logging info for dashboards
 
-//     echo 'const full_log_data = {' >> log_data.js
-//     for file in $full_log
-//     do
-//         samp_name=\$(basename \$file | sed 's/_full.log//')
-//         echo "\\"\$samp_name\\" :  \\`" >> log_data.js
-//         cat \$file >> log_data.js
-//         echo "\\`," >> log_data.js
-//     done
-//     sed -i '\$ s/,\$//' log_data.js
-//     echo '}' >> log_data.js
+ Notes:
 
-//     """
-// }
+*************/
 
-// workflow.onComplete {
-// 	println ( workflow.success ? "Done! Saving output" : "Oops .. something went wrong" )
-// }
+process zip_up_log_data {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/exp_dash/js/", pattern: "*.js", mode: 'copy'
+
+    input:
+        path summary_log
+        path full_log
+
+    output:
+        path "*.js"
+
+    """#!/bin/bash
+
+    set -euo pipefail
+
+    echo 'const log_data = {' > log_data.js
+    for file in $summary_log
+    do
+        samp_name=\$(basename \$file | sed 's/_read_metrics.log//')
+        echo "\\"\$samp_name\\" :  \\`" >> log_data.js
+        cat \$file >> log_data.js
+        echo "\\`," >> log_data.js
+    done
+    sed -i '\$ s/,\$//' log_data.js
+    echo '}' >> log_data.js
+
+    echo 'const full_log_data = {' >> log_data.js
+    for file in $full_log
+    do
+        samp_name=\$(basename \$file | sed 's/_full.log//')
+        echo "\\"\$samp_name\\" :  \\`" >> log_data.js
+        cat \$file >> log_data.js
+        echo "\\`," >> log_data.js
+    done
+    sed -i '\$ s/,\$//' log_data.js
+    echo '}' >> log_data.js
+
+    """
+}
+
 
 
 /*************
@@ -2140,4 +2151,65 @@ workflow {
                     .duplication_rate_out
             )
     )
+
+    // Generate QC metrics
+    generate_qc_metrics(
+        reformat_qc
+            .out
+            .rscrub_out.join(
+                count_umis_by_sample
+                    .out
+                    .umis_per_cell
+            )
+    )
+
+    // Zip up sample stats
+    zip_up_sample_stats(
+        reformat_qc
+            .out
+            .sample_stats
+            .toSortedList()
+    )
+
+    // Calculate cell totals
+    calc_cell_totals(
+        make_cds
+            .out
+            .make_cds
+            .toSortedList()
+    )
+
+    // Collapse collisions
+    collapse_collision(
+        reformat_qc
+            .out
+            .collision
+            .toSortedList()
+    )
+
+    // Generate dashboard
+    generate_dashboard(
+        zip_up_sample_stats.out.all_sample_stats,
+        calc_cell_totals.out.cell_counts,
+        collapse_collision.out.all_collision,
+        generate_qc_metrics.out.qc_plots.toSortedList(),
+        run_scrublet.out.scrub_pngs.toSortedList(),
+        file(params.garnett_file)
+    )
+
+    // Finish the log
+    finish_log(
+        run_scrublet.out.pipe_log,
+        generate_dashboard.out.exp_dash_out
+    )
+
+    // Zip up log data
+    zip_up_log_data(
+        finish_log.out.summary_log.toSortedList(),
+        finish_log.out.full_log.toSortedList()
+    )
+
+    workflow.onComplete {
+        println ( workflow.success ? "Done! Saving output" : "Oops .. something went wrong" )
+    }
 }

@@ -5,18 +5,15 @@ library(argparse)
 
 parser = argparse::ArgumentParser(description='Script to generate dashboard data file.')
 parser$add_argument('dup_file', help='File of all duplication stats.')
-parser$add_argument('output_folder', help='Output folder.')
+parser$add_argument('project_name', help='Project name.')
 parser$add_argument('cell_counts', help='Cell counts file.')
 parser$add_argument('barn_col', help='File of concatenated collision values.')
 parser$add_argument('garnett_csv', help='File of Garnett models or false.')
 args = parser$parse_args()
 
 all_dups <- read.csv(args$dup_file, header=FALSE, stringsAsFactors=FALSE)
-output_folder <- args$output_folder
+project_name <- args$project_name
 count_info <- read.table(args$cell_counts, stringsAsFactors=FALSE)
-
-project_name <- unlist(stringr::str_split(output_folder, "/"))
-project_name <- project_name[[length(project_name)]]
 
 c100 <- sum(count_info[count_info$V2 == 100,]$V3)
 c500 <- sum(count_info[count_info$V2 == 500,]$V3)
