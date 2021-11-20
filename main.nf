@@ -2175,7 +2175,7 @@ workflow {
     calc_cell_totals(
         make_cds
             .out
-            .make_cds
+            .cell_qcs
             .toSortedList()
     )
 
