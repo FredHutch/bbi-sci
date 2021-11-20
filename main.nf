@@ -156,7 +156,7 @@ process trim_fastqs {
     cache 'lenient'
 
     input:
-        tuple file(input_fastq), file(logfile)
+        tuple path(input_fastq), path(logfile)
 
     output:
         path "trim_out", emit: "trim_output"
@@ -245,10 +245,10 @@ process gather_info {
     cache 'lenient'
 
     input:
-        tuple val(key), val(name), file(trimmed_fastq), file(logfile), file(log_piece2), file(good_sample_sheet), file(star_file), file(gene_file)
+        tuple val(key), val(name), path(trimmed_fastq), path(logfile), path(log_piece2), path(good_sample_sheet), path(star_file), path(gene_file)
 
     output:
-        tuple env(star_path), val(key), val(name), env(star_mem), file(trimmed_fastq), file(logfile), file(log_piece2), emit: 'align_prepped'
+        tuple env(star_path), val(key), val(name), env(star_mem), path(trimmed_fastq), path(logfile), path(log_piece2), emit: 'align_prepped'
         tuple val(key), env(gtf_path), emit: 'gtf_info'
 
     """
@@ -791,532 +791,536 @@ process remove_dups_assign_genes {
 
 }
 
-// /*************
+/*************
 
-// Process: merge_assignment
+Process: merge_assignment
 
-//  Inputs:
-//     key - sample id
-//     split_gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
-//     split_bed - deduplicated sorted bed file
-//     logfile - running log
-//     split_umi_count - file with count of umis in split bam
-//     read_count - file with the total reads listed
+ Inputs:
+    key - sample id
+    split_gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
+    split_bed - deduplicated sorted bed file
+    logfile - running log
+    split_umi_count - file with count of umis in split bam
+    read_count - file with the total reads listed
 
-//  Outputs:
-//     key - sample id
-//     gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
-//     cell_gene_count - gzipped text file with a count of cell, gene pairs
-//     logfile - running log
-//     dup_stats - file with duplication rate information for the sample
+ Outputs:
+    key - sample id
+    gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
+    cell_gene_count - gzipped text file with a count of cell, gene pairs
+    logfile - running log
+    dup_stats - file with duplication rate information for the sample
 
-//  Pass through:
+ Pass through:
 
-//  Summary:
-//     merge bed files by sample
-//     merge gene assignment files by sample
-//     make cell gene count file
-//     calculate duplication rate
+ Summary:
+    merge bed files by sample
+    merge gene assignment files by sample
+    make cell gene count file
+    calculate duplication rate
 
-//  Downstream:
-//     count_umis_by_sample
-//     reformat_qc
+ Downstream:
+    count_umis_by_sample
+    reformat_qc
 
-//  Published:
+ Published:
 
-//  Notes:
+ Notes:
 
-// *************/
+*************/
 
-// remove_dup_part_out
-//     .groupTuple()
-//     .join(split_bam_log)
-//     .join(read_count)
-//     .set { for_cat_dups }
+process merge_assignment {
+    cache 'lenient'
 
-// process merge_assignment {
-//     cache 'lenient'
+    input:
+        tuple val(key), path(split_bed), path(split_gene_assign), path(split_umi_count), path(logfile), path(read_count)
 
-//     input:
-//         tuple val(key), file(split_bed), file(split_gene_assign), file(split_umi_count), file(logfile), file(read_count) from for_cat_dups
+    output:
+        tuple val(key), path("*.gz"), path("*_ga.txt"), path("merge_assignment.log"), emit: "merge_assignment_out"
+        tuple val(key), path("*duplication_rate_stats.txt"), emit: "duplication_rate_out"
+        path "*.bed", emit: "temp_bed"
 
-//     output:
-//         tuple val(key), file("*.gz"), file("*_ga.txt"), file("merge_assignment.log") into merge_assignment_out
-//         set val(key), file("*duplication_rate_stats.txt") into duplication_rate_out
-//         file "*.bed"  into temp_bed
+    """#!/bin/bash
 
-//     """
-//     cat ${logfile} > merge_assignment.log
-//     cat $split_bed > "${key}.bed"
-//     sort -m -k1,1 -k2,2 $split_gene_assign > "${key}_ga.txt"
+    set -euo pipefail
 
-//     datamash -g 1,2 count 2 < "${key}_ga.txt" \
-//     | gzip > "${key}.gz"
+    cat ${logfile} > merge_assignment.log
+    cat $split_bed > "${key}.bed"
+    sort -m -k1,1 -k2,2 $split_gene_assign > "${key}_ga.txt"
 
+    datamash -g 1,2 count 2 < "${key}_ga.txt" \
+    | gzip > "${key}.gz"
 
-//     umi=`cat $split_umi_count | awk '{ sum += \$1 } END { print sum }'`
-//     read=`cut -f2 $read_count`
-//     perc=\$(echo "100.0 * (1 - \$umi/\$read)" | bc -l)
-//     printf "%-18s   %10d    %10d    %7.1f\\n" $key \$read \$umi \$perc \
-//     >"${key}.duplication_rate_stats.txt"
+    umi=`cat $split_umi_count | awk '{ sum += \$1 } END { print sum }'`
+    read=`cut -f2 $read_count`
+    perc=\$(echo "100.0 * (1 - \$umi/\$read)" | bc -l)
+    printf "%-18s   %10d    %10d    %7.1f\\n" $key \$read \$umi \$perc \
+    >"${key}.duplication_rate_stats.txt"
 
-//     printf "
-//         remove_dups ending reads  : \$(wc -l ${key}.bed | awk '{print \$1;}')\n\n
-//         Read assignments:\n\$(awk '{count[\$3]++} END {for (word in count) { printf "            %-20s %10i\\n", word, count[word]}}' ${key}_ga.txt)\n\n" >> merge_assignment.log
+    printf "
+        remove_dups ending reads  : \$(wc -l ${key}.bed | awk '{print \$1;}')\n\n
+        Read assignments:\n\$(awk '{count[\$3]++} END {for (word in count) { printf "            %-20s %10i\\n", word, count[word]}}' ${key}_ga.txt)\n\n" >> merge_assignment.log
 
-//     printf "** End processes 'remove duplicates, assign_genes, merge_assignment' at: \$(date)\n\n" >> merge_assignment.log
+    printf "** End processes 'remove duplicates, assign_genes, merge_assignment' at: \$(date)\n\n" >> merge_assignment.log
 
-//     """
-// }
+    """
+}
 
 
-// /*************
+/*************
 
-// Process: count_umis_by_sample
+Process: count_umis_by_sample
 
-//  Inputs:
-//     key - sample id
-//     gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
-//     logfile - running log
+ Inputs:
+    key - sample id
+    gene_assign - text file with 3 columns: sample|cell, gene, gene type (exonic, intronic)
+    logfile - running log
 
-//  Outputs:
-//     key - sample id
-//     logfile - running log
-//     umis_per_cell - count of umis per cell
-//     umis_per_cell_intronic - count of umis per cell only from intronic reads - stops here
+ Outputs:
+    key - sample id
+    logfile - running log
+    umis_per_cell - count of umis per cell
+    umis_per_cell_intronic - count of umis per cell only from intronic reads - stops here
 
-//  Pass through:
-//     cell_gene_count - gzipped text file with a count of cell, gene pairs
+ Pass through:
+    cell_gene_count - gzipped text file with a count of cell, gene pairs
 
-//  Summary:
-//     calculate umis per sample - tabulate_per_cell_counts.py
+ Summary:
+    calculate umis per sample - tabulate_per_cell_counts.py
 
-//  Downstream:
-//     make_matrix
-//     generate_qc_metrics
+ Downstream:
+    make_matrix
+    generate_qc_metrics
 
-//  Published:
-//     umis_per_cell - count of umis per cell
-//     umis_per_cell_intronic - count of umis per cell only from intronic reads
+ Published:
+    umis_per_cell - count of umis per cell
+    umis_per_cell_intronic - count of umis per cell only from intronic reads
 
-//  Notes:
+ Notes:
 
-// *************/
+*************/
 
-// save_umi_per_cell = {params.output_dir + "/" + it - ~/.UMIs.per.cell.barcode.txt/ + "/umis_per_cell_barcode.txt"}
-// save_umi_per_int = {params.output_dir + "/" + it - ~/.UMIs.per.cell.barcode.intronic.txt/ + "/intronic_umis_per_cell_barcode.txt"}
+save_umi_per_cell = {params.output_dir + "/" + it - ~/.UMIs.per.cell.barcode.txt/ + "/umis_per_cell_barcode.txt"}
+save_umi_per_int = {params.output_dir + "/" + it - ~/.UMIs.per.cell.barcode.intronic.txt/ + "/intronic_umis_per_cell_barcode.txt"}
 
-// process count_umis_by_sample {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/", saveAs: save_umi_per_int, pattern: "*intronic.txt", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_umi_per_cell, pattern: "*barcode.txt", mode: 'copy'
+process count_umis_by_sample {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", saveAs: save_umi_per_int, pattern: "*intronic.txt", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_umi_per_cell, pattern: "*barcode.txt", mode: 'copy'
 
-//     input:
-//         set val(key), file(cell_gene_count), file(gene_assign), file(logfile) from merge_assignment_out
+    input:
+        tuple val(key), path(cell_gene_count), path(gene_assign), path(logfile)
 
-//     output:
-//         tuple val(key), file(cell_gene_count), file("count_umis_by_sample.log") into ubss_out
-//         tuple val(key), file("*UMIs.per.cell.barcode.txt") into umis_per_cell
-//         file "*UMIs.per.cell.barcode.intronic.txt" into umi_per_cell_intronic
+    output:
+        tuple val(key), path(cell_gene_count), path("count_umis_by_sample.log"), emit: "ubss_out"
+        tuple val(key), path("*UMIs.per.cell.barcode.txt"), emit: "umis_per_cell"
+        path "*UMIs.per.cell.barcode.intronic.txt", emit: "umi_per_cell_intronic"
 
-//     """
-//     cat ${logfile} > count_umis_by_sample.log
-//     printf "** Start process 'count_umis_by_sample' at: \$(date)\n\n" >> count_umis_by_sample.log
-//     printf "    Process versions:
-//         \$(python --version)\n\n" >> count_umis_by_sample.log
-//     printf "    Process command:
-//         tabulate_per_cell_counts.py
-//             --gene_assignment_files "$gene_assign"
-//             --all_counts_file "${key}.UMIs.per.cell.barcode.txt"
-//             --intron_counts_file "${key}.UMIs.per.cell.barcode.intronic.txt"\n\n"      >> count_umis_by_sample.log
+    """#!/bin/bash
 
+    set -euo pipefail
 
-//     tabulate_per_cell_counts.py \
-//         --gene_assignment_files "$gene_assign" \
-//         --all_counts_file "${key}.UMIs.per.cell.barcode.txt" \
-//         --intron_counts_file "${key}.UMIs.per.cell.barcode.intronic.txt"
+    cat ${logfile} > count_umis_by_sample.log
+    printf "** Start process 'count_umis_by_sample' at: \$(date)\n\n" >> count_umis_by_sample.log
+    printf "    Process versions:
+        \$(python --version)\n\n" >> count_umis_by_sample.log
+    printf "    Process command:
+        tabulate_per_cell_counts.py
+            --gene_assignment_files "$gene_assign"
+            --all_counts_file "${key}.UMIs.per.cell.barcode.txt"
+            --intron_counts_file "${key}.UMIs.per.cell.barcode.intronic.txt"\n\n"      >> count_umis_by_sample.log
 
 
-//     printf "    Process stats:
-//         Total cells                            : \$(wc -l ${key}.UMIs.per.cell.barcode.txt | awk '{print \$1;}')
-//         Total cells > 100 reads                : \$(awk '\$2>100{c++} END{print c+0}' ${key}.UMIs.per.cell.barcode.txt)
-//         Total cells > 1000 reads               : \$(awk '\$2>1000{c++} END{print c+0}' ${key}.UMIs.per.cell.barcode.txt)
-//         Total reads in cells with > 100 reads  : \$(awk '\$2>100{c=c+\$2} END{print c+0}' ${key}.UMIs.per.cell.barcode.txt)\n\n" >> count_umis_by_sample.log
+    tabulate_per_cell_counts.py \
+        --gene_assignment_files "$gene_assign" \
+        --all_counts_file "${key}.UMIs.per.cell.barcode.txt" \
+        --intron_counts_file "${key}.UMIs.per.cell.barcode.intronic.txt"
 
-//     printf "** End process 'count_umis_by_sample' at: \$(date)\n\n" >> count_umis_by_sample.log
-//     """
-// }
 
+    printf "    Process stats:
+        Total cells                            : \$(wc -l ${key}.UMIs.per.cell.barcode.txt | awk '{print \$1;}')
+        Total cells > 100 reads                : \$(awk '\$2>100{c++} END{print c+0}' ${key}.UMIs.per.cell.barcode.txt)
+        Total cells > 1000 reads               : \$(awk '\$2>1000{c++} END{print c+0}' ${key}.UMIs.per.cell.barcode.txt)
+        Total reads in cells with > 100 reads  : \$(awk '\$2>100{c=c+\$2} END{print c+0}' ${key}.UMIs.per.cell.barcode.txt)\n\n" >> count_umis_by_sample.log
 
-// /*************
+    printf "** End process 'count_umis_by_sample' at: \$(date)\n\n" >> count_umis_by_sample.log
+    """
+}
 
-// Process: make_matrix
 
-//  Inputs:
-//     key - sample id
-//     gtf_path - path to gtf info folder
-//     cell_gene_count - gzipped text file with a count of cell, gene pairs
-//     logfile - running log
+/*************
 
-//  Outputs:
-//     key - sample id
-//     logfile - running log
-//     umi_matrix - MatrixMarket format matrix of cells by genes
-//     cell_anno - Cell annotations for umi_matrix
-//     gene_anno - Gene annotations for umi_matrix
-//     gtf_path - path to gtf info folder
+Process: make_matrix
 
-//  Pass through:
+ Inputs:
+    key - sample id
+    gtf_path - path to gtf info folder
+    cell_gene_count - gzipped text file with a count of cell, gene pairs
+    logfile - running log
 
-//  Summary:
-//     Generate a matrix of cells by genes - make_matrix.py
+ Outputs:
+    key - sample id
+    logfile - running log
+    umi_matrix - MatrixMarket format matrix of cells by genes
+    cell_anno - Cell annotations for umi_matrix
+    gene_anno - Gene annotations for umi_matrix
+    gtf_path - path to gtf info folder
 
-//  Downstream:
-//     make_cds
+ Pass through:
 
-//  Published:
-//     umi_matrix - MatrixMarket format matrix of cell by umi
-//     cell_anno - Cell annotations for umi_matrix
-//     gene_anno - Gene annotations for umi_matrix
+ Summary:
+    Generate a matrix of cells by genes - make_matrix.py
 
-//  Notes:
+ Downstream:
+    make_cds
 
-// *************/
+ Published:
+    umi_matrix - MatrixMarket format matrix of cell by umi
+    cell_anno - Cell annotations for umi_matrix
+    gene_anno - Gene annotations for umi_matrix
 
-// ubss_out.join(gtf_info2).set{make_matrix_prepped}
-// save_umi = {params.output_dir + "/" + it - ~/.umi_counts.mtx/ + "/umi_counts.mtx"}
-// save_cell_anno = {params.output_dir + "/" + it - ~/.cell_annotations.txt/ + "/cell_annotations.txt"}
-// save_gene_anno = {params.output_dir + "/" + it - ~/.gene_annotations.txt/ + "/gene_annotations.txt"}
+ Notes:
 
-// process make_matrix {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/", saveAs: save_umi, pattern: "*umi_counts.mtx", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_cell_anno, pattern: "*cell_annotations.txt", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_gene_anno, pattern: "*gene_annotations.txt", mode: 'copy'
+*************/
 
-//     input:
-//         tuple val(key), file(cell_gene_count), file(logfile), val(gtf_path) from make_matrix_prepped
+save_umi = {params.output_dir + "/" + it - ~/.umi_counts.mtx/ + "/umi_counts.mtx"}
+save_cell_anno = {params.output_dir + "/" + it - ~/.cell_annotations.txt/ + "/cell_annotations.txt"}
+save_gene_anno = {params.output_dir + "/" + it - ~/.gene_annotations.txt/ + "/gene_annotations.txt"}
 
-//     output:
-//         tuple val(key), file("*cell_annotations.txt"), file("*umi_counts.mtx"), file("*gene_annotations.txt"), val(gtf_path), file("make_matrix.log") into mat_output
+process make_matrix {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", saveAs: save_umi, pattern: "*umi_counts.mtx", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_cell_anno, pattern: "*cell_annotations.txt", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_gene_anno, pattern: "*gene_annotations.txt", mode: 'copy'
 
-//     """
-//     cat ${logfile} > make_matrix.log
-//     printf "** Start process 'make_matrix' at: \$(date)\n\n" >> make_matrix.log
+    input:
+        tuple val(key), path(cell_gene_count), path(logfile), val(gtf_path)
 
-//     echo '    Process command:
-//         make_matrix.py <(zcat $cell_gene_count)
-//             --gene_annotation "${gtf_path}/latest.gene.annotations"
-//             --key "$key"
-//         cat ${gtf_path}/latest.gene.annotations > "${key}.gene_annotations.txt"  ' >> make_matrix.log
+    output:
+        tuple val(key), path("*cell_annotations.txt"), path("*umi_counts.mtx"), path("*gene_annotations.txt"), val(gtf_path), path("make_matrix.log"), emit: "mat_output"
 
+    """#!/bin/bash
 
-//     make_matrix.py <(zcat $cell_gene_count) --gene_annotation "${gtf_path}/latest.gene.annotations" --key "$key"
-//     cat "${gtf_path}/latest.gene.annotations" > "${key}.gene_annotations.txt"
+    set -euo pipefail
 
+    cat ${logfile} > make_matrix.log
+    printf "** Start process 'make_matrix' at: \$(date)\n\n" >> make_matrix.log
 
-//     printf "\n** End process 'make_matrix' at: \$(date)\n\n" >> make_matrix.log
-//     """
+    echo '    Process command:
+        make_matrix.py <(zcat $cell_gene_count)
+            --gene_annotation "${gtf_path}/latest.gene.annotations"
+            --key "$key"
+        cat ${gtf_path}/latest.gene.annotations > "${key}.gene_annotations.txt"  ' >> make_matrix.log
 
-// }
 
+    make_matrix.py <(zcat $cell_gene_count) --gene_annotation "${gtf_path}/latest.gene.annotations" --key "$key"
+    cat "${gtf_path}/latest.gene.annotations" > "${key}.gene_annotations.txt"
 
-// /*************
 
-// Process: make_cds
+    printf "\n** End process 'make_matrix' at: \$(date)\n\n" >> make_matrix.log
+    """
 
-//  Inputs:
-//     key - sample id
-//     umi_matrix - MatrixMarket format matrix of cells by genes
-//     cell_anno - Cell annotations for umi_matrix
-//     gene_anno - Gene annotations for umi_matrix
-//     gtf_path - path to gtf info folder
-//     logfile - running log
-//     params.umi_cutoff
+}
 
-//  Outputs:
-//     key - sample id
-//     scrub_matrix - matrix of counts output in proper format for scrublet
-//     cds_object - cds object in RDS format
-//     cell_qc - csv of cell quality control information
-//     logfile - running log
 
-//  Pass through:
+/*************
 
-//  Summary:
-//     Generate a monocle3 cds object - make_cds.R
+Process: make_cds
 
-//  Downstream:
-//     run_scrublet
-//     calc_cell_totals
+ Inputs:
+    key - sample id
+    umi_matrix - MatrixMarket format matrix of cells by genes
+    cell_anno - Cell annotations for umi_matrix
+    gene_anno - Gene annotations for umi_matrix
+    gtf_path - path to gtf info folder
+    logfile - running log
+    params.umi_cutoff
 
-//  Published:
+ Outputs:
+    key - sample id
+    scrub_matrix - matrix of counts output in proper format for scrublet
+    cds_object - cds object in RDS format
+    cell_qc - csv of cell quality control information
+    logfile - running log
 
-//  Notes:
+ Pass through:
 
-// *************/
+ Summary:
+    Generate a monocle3 cds object - make_cds.R
 
-// process make_cds {
-//     cache 'lenient'
+ Downstream:
+    run_scrublet
+    calc_cell_totals
 
-//     input:
-//         tuple val(key), file(cell_data), file(umi_matrix), file(gene_data), val(gtf_path), file(logfile) from mat_output
+ Published:
 
-//     output:
-//         tuple val(key), file("*for_scrub.mtx"), file("*.RDS"), file("*cell_qc.csv"), file("make_cds.log") into cds_out
-//         file("*cell_qc.csv") into cell_qcs
+ Notes:
 
-//     """
-//     cat ${logfile} > make_cds.log
-//     printf "** Start process 'make_cds' at: \$(date)\n\n" >> make_cds.log
-//     printf "    Process versions:
-//         \$(R --version | grep 'R version')
-//             monocle3 version \$(Rscript -e 'packageVersion("monocle3")')\n\n" >> make_cds.log
-//     echo '    Process command:
-//         make_cds.R
-//             "$umi_matrix"
-//             "$cell_data"
-//             "$gene_data"
-//             "${gtf_path}/latest.genes.bed"
-//             "$key"
-//             "$params.umi_cutoff"\n' >> make_cds.log
+*************/
 
+process make_cds {
+    cache 'lenient'
 
-//     make_cds.R \
-//         "$umi_matrix"\
-//         "$cell_data"\
-//         "$gene_data"\
-//         "${gtf_path}/latest.genes.bed"\
-//         "$key"\
-//         "$params.umi_cutoff"
+    input:
+        tuple val(key), path(cell_data), path(umi_matrix), path(gene_data), val(gtf_path), path(logfile) from mat_output
 
+    output:
+        tuple val(key), path("*for_scrub.mtx"), path("*.RDS"), path("*cell_qc.csv"), path("make_cds.log"), emit: "cds_out"
+        path("*cell_qc.csv"), emit: "cell_qcs"
 
-//     printf "** End process 'make_cds' at: \$(date)\n\n" >> make_cds.log
-//     """
-// }
+    """#!/bin/bash
 
+    set -euo pipefail
+    
+    cat ${logfile} > make_cds.log
+    printf "** Start process 'make_cds' at: \$(date)\n\n" >> make_cds.log
+    printf "    Process versions:
+        \$(R --version | grep 'R version')
+            monocle3 version \$(Rscript -e 'packageVersion("monocle3")')\n\n" >> make_cds.log
+    echo '    Process command:
+        make_cds.R
+            "$umi_matrix"
+            "$cell_data"
+            "$gene_data"
+            "${gtf_path}/latest.genes.bed"
+            "$key"
+            "$params.umi_cutoff"\n' >> make_cds.log
 
-// process apply_garnett {
-//     cache 'lenient'
 
-//     input:
-//         tuple val(key), file(scrub_matrix), file(cds_object), file(cell_qc), file(logfile) from cds_out
+    make_cds.R \
+        "$umi_matrix"\
+        "$cell_data"\
+        "$gene_data"\
+        "${gtf_path}/latest.genes.bed"\
+        "$key"\
+        "$params.umi_cutoff"
 
-//     output:
-//         tuple val(key), file(scrub_matrix), file("new_cds/*.RDS"), file(cell_qc), file("apply_garnett.log") into for_scrub
 
-// """
-//     cat ${logfile} > apply_garnett.log
-//     printf "** Start process 'apply_garnett' at: \$(date)\n\n" >> apply_garnett.log
-//     mkdir new_cds
-//     echo "No Garnett classifier provided for this sample" > garnett_error.txt
-//     if [ $params.garnett_file == 'false' ]
-//     then
-//         cp $cds_object new_cds/
-//     else
-//         apply_garnett.R $cds_object $params.garnett_file $key
-//     fi
+    printf "** End process 'make_cds' at: \$(date)\n\n" >> make_cds.log
+    """
+}
 
-//     cat garnett_error.txt >> apply_garnett.log
-//     printf "\n** End process 'apply_garnett' at: \$(date)\n\n" >> apply_garnett.log
 
-// """
+process apply_garnett {
+    cache 'lenient'
 
+    input:
+        tuple val(key), path(scrub_matrix), path(cds_object), path(cell_qc), path(logfile)
 
-// }
+    output:
+        tuple val(key), path(scrub_matrix), path("new_cds/*.RDS"), path(cell_qc), path("apply_garnett.log"), emit: "for_scrub"
 
+"""
+    cat ${logfile} > apply_garnett.log
+    printf "** Start process 'apply_garnett' at: \$(date)\n\n" >> apply_garnett.log
+    mkdir new_cds
+    echo "No Garnett classifier provided for this sample" > garnett_error.txt
+    if [ $params.garnett_file == 'false' ]
+    then
+        cp $cds_object new_cds/
+    else
+        apply_garnett.R $cds_object $params.garnett_file $key
+    fi
 
-// /*************
+    cat garnett_error.txt >> apply_garnett.log
+    printf "\n** End process 'apply_garnett' at: \$(date)\n\n" >> apply_garnett.log
 
-// Process: run_scrublet
+"""
 
-//  Inputs:
-//     key - sample id
-//     scrub_matrix - matrix of counts output in proper format for scrublet
-//     logfile - running log
 
-//  Outputs:
-//     key - sample id
-//     scrub_csv - scrublet results csv
-//     scrublet_png - png histogram of scrublet scores
-//     logfile - running log
+}
 
-//  Pass through:
-//     cds_object - cds object in RDS format
-//     cell_qc - csv of cell quality control information
 
-//  Summary:
-//     Run scrublet to generate doublet scores - run_scrublet.py
+/*************
 
-//  Downstream:
-//     calc_duplication_rate
-//     generate_dashboard
-//     finish_log
+Process: run_scrublet
 
-//  Published:
-//     scrublet_png - png histogram of scrublet scores
+ Inputs:
+    key - sample id
+    scrub_matrix - matrix of counts output in proper format for scrublet
+    logfile - running log
 
-//  Notes:
+ Outputs:
+    key - sample id
+    scrub_csv - scrublet results csv
+    scrublet_png - png histogram of scrublet scores
+    logfile - running log
 
-// *************/
+ Pass through:
+    cds_object - cds object in RDS format
+    cell_qc - csv of cell quality control information
 
-// save_hist = {params.output_dir + "/" + it - ~/_scrublet_hist.png/ + "/" + it}
+ Summary:
+    Run scrublet to generate doublet scores - run_scrublet.py
 
-// process run_scrublet {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/", saveAs: save_hist, pattern: "*png", mode: 'copy'
+ Downstream:
+    calc_duplication_rate
+    generate_dashboard
+    finish_log
 
-//     input:
-//         tuple val(key), file(scrub_matrix), file(cds_object), file(cell_qc), file(logfile) from for_scrub
+ Published:
+    scrublet_png - png histogram of scrublet scores
 
-//     output:
-//         tuple val(key), file("*scrublet_out.csv"), file(cds_object), file(cell_qc) into scrublet_out
-//         file ("*.png") into scrub_pngs
-//         tuple val(key), file("run_scrublet.log") into pipe_log
+ Notes:
 
-//     """
-//     cat ${logfile} > run_scrublet.log
-//     printf "** Start process 'run_scrublet' at: \$(date)\n\n" >> run_scrublet.log
-//     printf "    Process versions:
-//         \$(python --version)
-//             \$(pip freeze | grep scrublet | tr '==' ' ')\n\n" >> run_scrublet.log
+*************/
 
-//     if [ $params.skip_doublet_detect == 'false' ]
-//     then
-//         run_scrublet.py --key $key --mat $scrub_matrix
-//         echo '    Process command:
-//         run_scrublet.py --key $key --mat $scrub_matrix\n'  >> run_scrublet.log
-//     else
-//         run_scrublet.py --key $key --mat $scrub_matrix --skip
-//         echo '    Process command:
-//         run_scrublet.py --key $key --mat $scrub_matrix --skip\n'  >> run_scrublet.log
-//         printf "    Scrublet skipped by request\n\n" >> run_scrublet.log
-//     fi
+save_hist = {params.output_dir + "/" + it - ~/_scrublet_hist.png/ + "/" + it}
 
-//     printf "** End process 'run_scrublet' at: \$(date)\n\n" >> run_scrublet.log
+process run_scrublet {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", saveAs: save_hist, pattern: "*png", mode: 'copy'
 
-//     printf "** Start processes to generate qc metrics and dashboard at: \$(date)\n\n" >> run_scrublet.log
-//     """
+    input:
+        tuple val(key), path(scrub_matrix), path(cds_object), path(cell_qc), path(logfile)
 
-// }
+    output:
+        tuple val(key), path("*scrublet_out.csv"), path(cds_object), path(cell_qc), emit: "scrublet_out"
+        path "*.png", emit: "scrub_pngs"
+        tuple val(key), path("run_scrublet.log"), emit: "pipe_log"
 
+    """#!/bin/bash
 
-// /*************
+    set -euo pipefail
 
-// Process: reformat_qc
+    cat ${logfile} > run_scrublet.log
+    printf "** Start process 'run_scrublet' at: \$(date)\n\n" >> run_scrublet.log
+    printf "    Process versions:
+        \$(python --version)
+            \$(pip freeze | grep scrublet | tr '==' ' ')\n\n" >> run_scrublet.log
 
-//  Inputs:
-//     key - sample id
-//     cds_object - cds object in RDS format
-//     cell_qc - csv of cell quality control information
-//     scrub_csv - scrublet results csv
-//     dup_stats - file with duplication rate information for the sample
+    if [ $params.skip_doublet_detect == 'false' ]
+    then
+        run_scrublet.py --key $key --mat $scrub_matrix
+        echo '    Process command:
+        run_scrublet.py --key $key --mat $scrub_matrix\n'  >> run_scrublet.log
+    else
+        run_scrublet.py --key $key --mat $scrub_matrix --skip
+        echo '    Process command:
+        run_scrublet.py --key $key --mat $scrub_matrix --skip\n'  >> run_scrublet.log
+        printf "    Scrublet skipped by request\n\n" >> run_scrublet.log
+    fi
 
-//  Outputs:
-//     key - sample id
-//     cds_object - cds object in RDS format
-//     sample_stats - csv with sample-wise statistics
-//     cell_qc - csv of cell quality control information
-//     collision - file containing collision rate if barnyard sample
+    printf "** End process 'run_scrublet' at: \$(date)\n\n" >> run_scrublet.log
 
-//  Pass through:
+    printf "** Start processes to generate qc metrics and dashboard at: \$(date)\n\n" >> run_scrublet.log
+    """
 
-//  Summary:
-//     Add scrublet info to cell_qc and cds object
-//     Calculate collision rate for barnyard
-//     Calculate sample statistics
+}
 
-//  Downstream:
-//     generate_qc_metrics
-//     zip_up_sample_stats
-//     collapse_collision
 
-//  Published:
-//     cds_object - cds object in RDS format
-//     sample_stats - csv with sample-wise statistics
-//     cell_qc - csv of cell quality control information
+/*************
 
-//  Notes:
+Process: reformat_qc
 
-// *************/
+ Inputs:
+    key - sample id
+    cds_object - cds object in RDS format
+    cell_qc - csv of cell quality control information
+    scrub_csv - scrublet results csv
+    dup_stats - file with duplication rate information for the sample
 
-// scrublet_out.join(duplication_rate_out).set{reformat_qc_in}
+ Outputs:
+    key - sample id
+    cds_object - cds object in RDS format
+    sample_stats - csv with sample-wise statistics
+    cell_qc - csv of cell quality control information
+    collision - file containing collision rate if barnyard sample
 
-// save_cds = {params.output_dir + "/" + it - ~/_cds.RDS/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
-// save_cell_qc = {params.output_dir + "/" + it - ~/_cell_qc.csv/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
-// save_samp_stats = {params.output_dir + "/" + it - ~/_sample_stats.csv/ + "/" + it}
+ Pass through:
 
-// process reformat_qc {
-//     cache 'lenient'
-//     publishDir path: "${params.output_dir}/", saveAs: save_cds, pattern: "temp_fold/*cds.RDS", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_cell_qc, pattern: "temp_fold/*cell_qc.csv", mode: 'copy'
-//     publishDir path: "${params.output_dir}/", saveAs: save_samp_stats, pattern: "*sample_stats.csv", mode: 'copy'
+ Summary:
+    Add scrublet info to cell_qc and cds object
+    Calculate collision rate for barnyard
+    Calculate sample statistics
 
-//     input:
-//         tuple val(key), file(scrub_csv), file(cds_object), file(cell_qc), file(dup_stats) from reformat_qc_in
+ Downstream:
+    generate_qc_metrics
+    zip_up_sample_stats
+    collapse_collision
 
-//     output:
-//         tuple val(key), file("temp_fold/*.RDS"), file("temp_fold/*.csv") into rscrub_out
-//         file("*sample_stats.csv") into sample_stats
-//         file("*collision.txt") into collision
+ Published:
+    cds_object - cds object in RDS format
+    sample_stats - csv with sample-wise statistics
+    cell_qc - csv of cell quality control information
 
+ Notes:
 
-//     """
-//     #!/usr/bin/env Rscript
+*************/
 
-//     library(monocle3)
+save_cds = {params.output_dir + "/" + it - ~/_cds.RDS/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
+save_cell_qc = {params.output_dir + "/" + it - ~/_cell_qc.csv/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
+save_samp_stats = {params.output_dir + "/" + it - ~/_sample_stats.csv/ + "/" + it}
 
-//     dir.create("temp_fold")
-//     cds <- readRDS("$cds_object")
-//     cell_qc <- read.csv("$cell_qc")
+process reformat_qc {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}/", saveAs: save_cds, pattern: "temp_fold/*cds.RDS", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_cell_qc, pattern: "temp_fold/*cell_qc.csv", mode: 'copy'
+    publishDir path: "${params.output_dir}/", saveAs: save_samp_stats, pattern: "*sample_stats.csv", mode: 'copy'
 
-//     if(nrow(pData(cds)) > 0) {
-//         if("$params.skip_doublet_detect" == 'false') {
-//             scrublet_out <- read.csv("$scrub_csv", header=F)
-//             pData(cds)\$scrublet_score <- scrublet_out\$V1
-//             pData(cds)\$scrublet_call <- ifelse(scrublet_out\$V2 == 1, "Doublet", "Singlet")
-//             cell_qc\$scrublet_score <- scrublet_out\$V1
-//             cell_qc\$scrublet_call <- ifelse(scrublet_out\$V2 == 1, "Doublet", "Singlet")
-//         }
-//     }
+    input:
+        tuple val(key), path(scrub_csv), path(cds_object), path(cell_qc), path(dup_stats) from reformat_qc_in
 
-//     write.csv(cell_qc, quote=FALSE, file="temp_fold/$cell_qc")
+    output:
+        tuple val(key), path("temp_fold/*.RDS"), path("temp_fold/*.csv"), emit: "rscrub_out"
+        path("*sample_stats.csv"), emit: "sample_stats"
+        path("*collision.txt"), emit: "collision"
 
-//     dup_stats <- read.table(paste0("$key", ".duplication_rate_stats.txt"))
 
-//     df <- data.frame(sample="$key", n.reads = dup_stats\$V2, n.umi = dup_stats\$V3,
-//                      duplication_rate = dup_stats\$V4,
-//                      doublet_count = sum(cell_qc\$scrublet_call == "Doublet", na.rm=TRUE),
-//                      doublet_perc = paste0(round(sum(cell_qc\$scrublet_call == "Doublet",
-//                                                      na.rm=TRUE)/nrow(cell_qc) * 100, 1), "%"),
-//                      doublet_NAs=sum(is.na(cell_qc\$scrublet_call)))
+    """#!/usr/bin/env Rscript
 
-//     write.csv(df, file=paste0("$key", "_sample_stats.csv"), quote=FALSE, row.names=FALSE)
-//     saveRDS(cds, file="temp_fold/$cds_object")
+    library(monocle3)
 
-//     if ("$key" == "Barnyard") {
-//         fData(cds)\$mouse <- grepl("ENSMUSG", fData(cds)\$id)
-//         fData(cds)\$human <- grepl("ENSG", fData(cds)\$id)
+    dir.create("temp_fold")
+    cds <- readRDS("$cds_object")
+    cell_qc <- read.csv("$cell_qc")
 
-//         pData(cds)\$mouse_reads <- Matrix::colSums(exprs(cds)[fData(cds)\$mouse,])
-//         pData(cds)\$human_reads <- Matrix::colSums(exprs(cds)[fData(cds)\$human,])
-//         pData(cds)\$total_reads <- pData(cds)\$mouse_reads + pData(cds)\$human_reads
-//         pData(cds)\$human_perc <- pData(cds)\$human_reads/pData(cds)\$total_reads
-//         pData(cds)\$mouse_perc <- pData(cds)\$mouse_reads/pData(cds)\$total_reads
-//         pData(cds)\$collision <- ifelse(pData(cds)\$human_perc >= .9 | pData(cds)\$mouse_perc >= .9, FALSE, TRUE)
+    if(nrow(pData(cds)) > 0) {
+        if("$params.skip_doublet_detect" == 'false') {
+            scrublet_out <- read.csv("$scrub_csv", header=F)
+            pData(cds)\$scrublet_score <- scrublet_out\$V1
+            pData(cds)\$scrublet_call <- ifelse(scrublet_out\$V2 == 1, "Doublet", "Singlet")
+            cell_qc\$scrublet_score <- scrublet_out\$V1
+            cell_qc\$scrublet_call <- ifelse(scrublet_out\$V2 == 1, "Doublet", "Singlet")
+        }
+    }
 
-//         collision_rate <- round(sum(pData(cds)\$collision/nrow(pData(cds))) * 200, 1)
-//         fileConn<-file("Barn_collision.txt")
-//         writeLines(paste0("$key", "\t", collision_rate, "%"), fileConn)
-//         close(fileConn)
-//     } else {
-//         fileConn<-file("${key}_no_collision.txt")
-//         writeLines(paste0("$key", "\t", "NA"), fileConn)
-//         close(fileConn)
-//     }
-//     """
+    write.csv(cell_qc, quote=FALSE, file="temp_fold/$cell_qc")
 
-// }
+    dup_stats <- read.table(paste0("$key", ".duplication_rate_stats.txt"))
+
+    df <- data.frame(sample="$key", n.reads = dup_stats\$V2, n.umi = dup_stats\$V3,
+                     duplication_rate = dup_stats\$V4,
+                     doublet_count = sum(cell_qc\$scrublet_call == "Doublet", na.rm=TRUE),
+                     doublet_perc = paste0(round(sum(cell_qc\$scrublet_call == "Doublet",
+                                                     na.rm=TRUE)/nrow(cell_qc) * 100, 1), "%"),
+                     doublet_NAs=sum(is.na(cell_qc\$scrublet_call)))
+
+    write.csv(df, file=paste0("$key", "_sample_stats.csv"), quote=FALSE, row.names=FALSE)
+    saveRDS(cds, file="temp_fold/$cds_object")
+
+    if ("$key" == "Barnyard") {
+        fData(cds)\$mouse <- grepl("ENSMUSG", fData(cds)\$id)
+        fData(cds)\$human <- grepl("ENSG", fData(cds)\$id)
+
+        pData(cds)\$mouse_reads <- Matrix::colSums(exprs(cds)[fData(cds)\$mouse,])
+        pData(cds)\$human_reads <- Matrix::colSums(exprs(cds)[fData(cds)\$human,])
+        pData(cds)\$total_reads <- pData(cds)\$mouse_reads + pData(cds)\$human_reads
+        pData(cds)\$human_perc <- pData(cds)\$human_reads/pData(cds)\$total_reads
+        pData(cds)\$mouse_perc <- pData(cds)\$mouse_reads/pData(cds)\$total_reads
+        pData(cds)\$collision <- ifelse(pData(cds)\$human_perc >= .9 | pData(cds)\$mouse_perc >= .9, FALSE, TRUE)
+
+        collision_rate <- round(sum(pData(cds)\$collision/nrow(pData(cds))) * 200, 1)
+        fileConn<-path("Barn_collision.txt")
+        writeLines(paste0("$key", "\t", collision_rate, "%"), fileConn)
+        close(fileConn)
+    } else {
+        fileConn<-path("${key}_no_collision.txt")
+        writeLines(paste0("$key", "\t", "NA"), fileConn)
+        close(fileConn)
+    }
+    """
+
+}
 
 
 // /*************
@@ -1369,11 +1373,11 @@ process remove_dups_assign_genes {
 //     publishDir path: "${params.output_dir}/", saveAs: save_garnett, pattern: "*Garnett.png", mode: 'copy'
 
 //     input:
-//         tuple val(key), file(cds_object), file(cell_qc), file(umis_per_cell) from for_gen_qc
+//         tuple val(key), path(cds_object), path(cell_qc), path(umis_per_cell) from for_gen_qc
 
 //     output:
-//         file("*.png") into qc_plots
-//         file("*.txt") into cutoff
+//         path("*.png") into qc_plots
+//         path("*.txt") into cutoff
 
 //     """
 //     generate_qc.R\
@@ -1617,13 +1621,13 @@ process remove_dups_assign_genes {
 //     publishDir path: "${params.output_dir}/", saveAs: save_txt_for_wrap, pattern: "*.txt", mode: 'copy'
 
 //     input:
-//         tuple val(key), file(logfile) from pipe_log
+//         tuple val(key), path(logfile) from pipe_log
 //         file exp_dash from exp_dash_out
 
 //     output:
-//         file("*_full.log") into full_log
-//         file("*_read_metrics.log") into summary_log
-//         file("*log_data.txt") into log_txt_for_wrap
+//         path("*_full.log") into full_log
+//         path("*_read_metrics.log") into summary_log
+//         path("*log_data.txt") into log_txt_for_wrap
 
 //     """
 //     head -n 2 ${logfile} > ${key}_full.log
@@ -2043,8 +2047,8 @@ workflow {
             .sample_bams
             .join(
                 gather_info
-                .out
-                .gtf_info
+                    .out
+                    .gtf_info
             )
     )
 
@@ -2062,5 +2066,78 @@ workflow {
                     file("${params.gene_file_prefix}/${it[2]}/latest.genes.bed")
                 ]
             })
+    )
+
+    // Prepare inputs for merge_assignment
+    remove_dups_assign_genes
+        .out
+        .remove_dup_part_out
+        .groupTuple()
+        .join(
+            split_bam
+                .out
+                .split_bam_log
+            )
+        .join(
+            merge_bams
+                .out
+                .read_count
+            )
+        .set { for_cat_dups }
+
+    // Merge assignments
+    merge_assignment(
+        for_cat_dups
+    )
+
+    // Count UMIs
+    count_umis_by_sample(
+        merge_assignment
+            .out
+            .merge_assignment_out
+    )
+
+    // Make a matrix
+    make_matrix(
+        count_umis_by_sample
+            .out
+            .ubss_out.join(
+                gather_info
+                    .out
+                    .gtf_info
+            )
+    )
+
+    // Make CDS
+    make_cds(
+        make_matrix
+            .out
+            .mat_output
+    )
+
+    // Apply Garnet
+    apply_garnett(
+        make_cds
+            .out
+            .cds_out
+    )
+    
+    // Run scrublet
+    run_scrublet(
+        apply_garnett
+            .out
+            .for_scrub
+    )
+
+    // Reformat QC
+    reformat_qc(
+        run_scrublet
+            .out
+            .scrublet_out
+            .join(
+                merge_assignment
+                    .out
+                    .duplication_rate_out
+            )
     )
 }
