@@ -993,10 +993,10 @@ process make_matrix {
     publishDir path: "${params.output_dir}/", saveAs: save_gene_anno, pattern: "*gene_annotations.txt", mode: 'copy'
 
     input:
-        tuple val(key), path(cell_gene_count), path(logfile), val(gtf_path)
+        tuple val(key), path(cell_gene_count), path(logfile), path(gene_annotations), path(gene_bed)
 
     output:
-        tuple val(key), path("*cell_annotations.txt"), path("*umi_counts.mtx"), path("*gene_annotations.txt"), val(gtf_path), path("make_matrix.log"), emit: "mat_output"
+        tuple val(key), path("*cell_annotations.txt"), path("*umi_counts.mtx"), path("*gene_annotations.txt"), path(gene_annotations), path(gene_bed), path("make_matrix.log"), emit: "mat_output"
 
     """#!/bin/bash
 
@@ -1007,13 +1007,13 @@ process make_matrix {
 
     echo '    Process command:
         make_matrix.py <(zcat $cell_gene_count)
-            --gene_annotation "${gtf_path}/latest.gene.annotations"
+            --gene_annotation "${gene_annotations}"
             --key "$key"
-        cat ${gtf_path}/latest.gene.annotations > "${key}.gene_annotations.txt"  ' >> make_matrix.log
+        cat ${gene_annotations} > "${key}.gene_annotations.txt"  ' >> make_matrix.log
 
 
-    make_matrix.py <(zcat $cell_gene_count) --gene_annotation "${gtf_path}/latest.gene.annotations" --key "$key"
-    cat "${gtf_path}/latest.gene.annotations" > "${key}.gene_annotations.txt"
+    make_matrix.py <(zcat $cell_gene_count) --gene_annotation "${gene_annotations}" --key "$key"
+    cat "${gene_annotations}" > "${key}.gene_annotations.txt"
 
 
     printf "\n** End process 'make_matrix' at: \$(date)\n\n" >> make_matrix.log
@@ -1061,7 +1061,7 @@ process make_cds {
     cache 'lenient'
 
     input:
-        tuple val(key), path(cell_data), path(umi_matrix), path(gene_data), val(gtf_path), path(logfile)
+        tuple val(key), path(cell_data), path(umi_matrix), path(gene_data), file(gene_annotations), path(gene_bed), path(logfile)
 
     output:
         tuple val(key), path("*for_scrub.mtx"), path("*.RDS"), path("*cell_qc.csv"), path("make_cds.log"), emit: "cds_out"
@@ -1081,7 +1081,7 @@ process make_cds {
             "$umi_matrix"
             "$cell_data"
             "$gene_data"
-            "${gtf_path}/latest.genes.bed"
+            "${gene_bed}"
             "$key"
             "$params.umi_cutoff"\n' >> make_cds.log
 
@@ -1090,7 +1090,7 @@ process make_cds {
         "$umi_matrix"\
         "$cell_data"\
         "$gene_data"\
-        "${gtf_path}/latest.genes.bed"\
+        "${gene_bed}"\
         "$key"\
         "$params.umi_cutoff"
 
@@ -1105,6 +1105,7 @@ process apply_garnett {
 
     input:
         tuple val(key), path(scrub_matrix), path(cds_object), path(cell_qc), path(logfile)
+        path garnett_file
 
     output:
         tuple val(key), path(scrub_matrix), path("new_cds/*.RDS"), path(cell_qc), path("apply_garnett.log"), emit: "for_scrub"
@@ -1114,11 +1115,11 @@ process apply_garnett {
     printf "** Start process 'apply_garnett' at: \$(date)\n\n" >> apply_garnett.log
     mkdir new_cds
     echo "No Garnett classifier provided for this sample" > garnett_error.txt
-    if [ $params.garnett_file == 'false' ]
+    if [ $garnett_file == 'false' ]
     then
         cp $cds_object new_cds/
     else
-        apply_garnett.R $cds_object $params.garnett_file $key
+        apply_garnett.R $cds_object $garnett_file $key
     fi
 
     cat garnett_error.txt >> apply_garnett.log
@@ -1310,11 +1311,11 @@ process reformat_qc {
         pData(cds)\$collision <- ifelse(pData(cds)\$human_perc >= .9 | pData(cds)\$mouse_perc >= .9, FALSE, TRUE)
 
         collision_rate <- round(sum(pData(cds)\$collision/nrow(pData(cds))) * 200, 1)
-        fileConn<-path("Barn_collision.txt")
+        fileConn<-file("Barn_collision.txt")
         writeLines(paste0("$key", "\t", collision_rate, "%"), fileConn)
         close(fileConn)
     } else {
-        fileConn<-path("${key}_no_collision.txt")
+        fileConn<-file("${key}_no_collision.txt")
         writeLines(paste0("$key", "\t", "NA"), fileConn)
         close(fileConn)
     }
@@ -2116,6 +2117,13 @@ workflow {
                 gather_info
                     .out
                     .gtf_info
+                    .map({
+                        it -> [
+                            it[0],
+                            file("${params.gene_file_prefix}/${it[1]}/latest.gene.annotations"),
+                            file("${params.gene_file_prefix}/${it[1]}/latest.genes.bed"),
+                        ]
+                    })
             )
     )
 
@@ -2130,7 +2138,8 @@ workflow {
     apply_garnett(
         make_cds
             .out
-            .cds_out
+            .cds_out,
+        file(params.garnett_file)
     )
     
     // Run scrublet
