@@ -1570,8 +1570,9 @@ process generate_dashboard {
         path cell_counts
         path all_collision
         path plots
-        path scrublet_png
+        path "*"
         path garnett_file
+        path skeleton_dash_tar
 
     output:
         path exp_dash, emit: "exp_dash_out"
@@ -1582,8 +1583,12 @@ process generate_dashboard {
 
     generate_dash_data.R $all_sample_stats $params.project_name $cell_counts $all_collision $garnett_file
 
-    mkdir exp_dash
-    cp -R $baseDir/bin/skeleton_dash/* exp_dash/
+    # Decompress the skeleton dash
+    tar xvf "$skeleton_dash_tar"
+
+    # Change the base folder for the skeleton dash
+    mv skeleton_dash exp_dash
+
     mv *.png exp_dash/img/
 
     mv *.js exp_dash/js/
@@ -2201,9 +2206,10 @@ workflow {
         zip_up_sample_stats.out.all_sample_stats,
         calc_cell_totals.out.cell_counts,
         collapse_collision.out.all_collision,
-        generate_qc_metrics.out.qc_plots.toSortedList(),
-        run_scrublet.out.scrub_pngs.toSortedList(),
-        file(params.garnett_file)
+        generate_qc_metrics.out.qc_plots.flatten().toSortedList(),
+        run_scrublet.out.scrub_pngs.flatten().toSortedList(),
+        file(params.garnett_file),
+        file("$baseDir/bin/skeleton_dash.tar")
     )
 
     // Finish the log
