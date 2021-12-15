@@ -2224,7 +2224,4 @@ workflow {
         finish_log.out.full_log.toSortedList()
     )
 
-    workflow.onComplete {
-        println ( workflow.success ? "Done! Saving output" : "Oops .. something went wrong" )
-    }
 }
