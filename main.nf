@@ -1962,7 +1962,7 @@ workflow {
         .fromPath("${params.star_file_prefix}/**")
         .map({
             it -> [
-                "s3:/${it.toAbsolutePath()}".replaceAll("s3://z1temp/bbi-jax/genome_files/", "").split("/")[0], it
+                "s3:/${it.toAbsolutePath()}".replaceAll("${params.star_file_prefix}/", "").split("/")[0], it
             ]
         })
         .groupTuple()
