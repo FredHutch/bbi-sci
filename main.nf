@@ -1240,8 +1240,8 @@ Process: reformat_qc
 
 *************/
 
-save_cds = {it - ~/_cds.RDS/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
-save_cell_qc = {it - ~/_cell_qc.csv/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
+save_cds = {it - ~/_cds.RDS/ - ~/temp_fold/ + "/" + it - ~/temp_fold/ - "/"}
+save_cell_qc = {it - ~/_cell_qc.csv/ - ~/temp_fold/ + "/" + it - ~/temp_fold/ - "/"}
 save_samp_stats = {it - ~/_sample_stats.csv/ + "/" + it}
 
 process reformat_qc {
