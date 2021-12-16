@@ -286,9 +286,9 @@ Process: process_hashes
 
 *************/
 
-save_hash_cell = {params.output_dir + "/" + it - ~/.hashumis_cells.txt/ + "/" + it}
-save_hash_hash = {params.output_dir + "/" + it - ~/.hashumis_hashes.txt/ + "/" + it}
-save_hash_mtx = {params.output_dir + "/" + it - ~/.hashumis.mtx/ + "/" + it}
+save_hash_cell = {it - ~/.hashumis_cells.txt/ + "/" + it}
+save_hash_hash = {it - ~/.hashumis_hashes.txt/ + "/" + it}
+save_hash_mtx = {it - ~/.hashumis.mtx/ + "/" + it}
 
 process process_hashes {
     cache 'lenient'
@@ -556,7 +556,7 @@ Process: merge_bams
 
 *************/
 
-save_bam = {params.output_dir + "/" + it - ~/.bam/ + "/" + it}
+save_bam = {it - ~/.bam/ + "/" + it}
 
 process merge_bams {
     cache 'lenient'
@@ -891,8 +891,8 @@ Process: count_umis_by_sample
 
 *************/
 
-save_umi_per_cell = {params.output_dir + "/" + it - ~/.UMIs.per.cell.barcode.txt/ + "/umis_per_cell_barcode.txt"}
-save_umi_per_int = {params.output_dir + "/" + it - ~/.UMIs.per.cell.barcode.intronic.txt/ + "/intronic_umis_per_cell_barcode.txt"}
+save_umi_per_cell = {it - ~/.UMIs.per.cell.barcode.txt/ + "/umis_per_cell_barcode.txt"}
+save_umi_per_int = {it - ~/.UMIs.per.cell.barcode.intronic.txt/ + "/intronic_umis_per_cell_barcode.txt"}
 
 process count_umis_by_sample {
     cache 'lenient'
@@ -974,9 +974,9 @@ Process: make_matrix
 
 *************/
 
-save_umi = {params.output_dir + "/" + it - ~/.umi_counts.mtx/ + "/umi_counts.mtx"}
-save_cell_anno = {params.output_dir + "/" + it - ~/.cell_annotations.txt/ + "/cell_annotations.txt"}
-save_gene_anno = {params.output_dir + "/" + it - ~/.gene_annotations.txt/ + "/gene_annotations.txt"}
+save_umi = {it - ~/.umi_counts.mtx/ + "/umi_counts.mtx"}
+save_cell_anno = {it - ~/.cell_annotations.txt/ + "/cell_annotations.txt"}
+save_gene_anno = {it - ~/.gene_annotations.txt/ + "/gene_annotations.txt"}
 
 process make_matrix {
     cache 'lenient'
@@ -1157,7 +1157,7 @@ Process: run_scrublet
 
 *************/
 
-save_hist = {params.output_dir + "/" + it - ~/_scrublet_hist.png/ + "/" + it}
+save_hist = {it - ~/_scrublet_hist.png/ + "/" + it}
 
 process run_scrublet {
     cache 'lenient'
@@ -1240,9 +1240,9 @@ Process: reformat_qc
 
 *************/
 
-save_cds = {params.output_dir + "/" + it - ~/_cds.RDS/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
-save_cell_qc = {params.output_dir + "/" + it - ~/_cell_qc.csv/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
-save_samp_stats = {params.output_dir + "/" + it - ~/_sample_stats.csv/ + "/" + it}
+save_cds = {it - ~/_cds.RDS/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
+save_cell_qc = {it - ~/_cell_qc.csv/ - ~/temp_fold/ + "/" + it - ~/temp_fold/}
+save_samp_stats = {it - ~/_sample_stats.csv/ + "/" + it}
 
 process reformat_qc {
     cache 'lenient'
@@ -1352,10 +1352,10 @@ Process: generate_qc_metrics
 
 *************/
 
-save_knee = {params.output_dir + "/" + it - ~/_knee_plot.png/ + "/" + it}
-save_umap = {params.output_dir + "/" + it - ~/_UMAP.png/ + "/" + it}
-save_cellqc = {params.output_dir + "/" + it - ~/_cell_qc.png/ + "/" + it}
-save_garnett = {params.output_dir + "/" + it.split("_")[0] + "/" + it}
+save_knee = {it - ~/_knee_plot.png/ + "/" + it}
+save_umap = {it - ~/_UMAP.png/ + "/" + it}
+save_cellqc = {it - ~/_cell_qc.png/ + "/" + it}
+save_garnett = {it.split("_")[0] + "/" + it}
 
 process generate_qc_metrics {
     cache 'lenient'
@@ -1622,8 +1622,8 @@ Process: finish_log
 
 *************/
 
-save_logs = {params.output_dir + "/" + it - ~/_read_metrics.log/ - ~/_full.log/ + "/" + it}
-save_txt_for_wrap = {params.output_dir + "/" + it - ~/_log_data.txt/ + "/" + it}
+save_logs = {it - ~/_read_metrics.log/ - ~/_full.log/ + "/" + it}
+save_txt_for_wrap = {it - ~/_log_data.txt/ + "/" + it}
 
 process finish_log {
     cache 'lenient'
