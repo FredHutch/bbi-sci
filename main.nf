@@ -1838,6 +1838,10 @@ process single_page_html {
 
     set -euo pipefail
 
+    # Copy the log data into the folder with the other JS files
+    cp log_data.js exp_data/js/
+
+    # Generate a single-page HTML
     generate_single_page.py
 
     """
