@@ -1814,6 +1814,38 @@ process zip_up_log_data {
 
 
 /*************
+
+Process: single_page_html
+
+ Inputs:
+    dash_inputs - log_data.js, data.js, *.png
+
+ Outputs:
+    exp_dash.html - Single-page html
+
+*************/
+process single_page_html {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}", mode: 'copy', overwrite: true
+
+    input:
+        path "*"
+
+    output:
+        path "*.html"
+
+    """#!/bin/bash
+
+    set -euo pipefail
+
+    rm a
+
+    """
+}
+
+
+
+/*************
 Groovy functions
 *************/
 
@@ -2192,6 +2224,19 @@ workflow {
     zip_up_log_data(
         finish_log.out.summary_log.toSortedList(),
         finish_log.out.full_log.toSortedList()
+    )
+
+    // Generate a single-page HTML
+    single_page_html(
+        // exp_dash/img/ and exp_dash/js/data.js
+        generate_dashboard
+            .out
+            .exp_dash_out
+            .flatten()
+            .mix(
+                // log_data.js
+                zip_up_log_data.out
+            ).toSortedList()
     )
 
 }
