@@ -1962,7 +1962,7 @@ workflow {
         .fromPath("${params.star_file_prefix}/**")
         .map({
             it -> [
-                "${it.toAbsolutePath()}".replaceAll("${params.star_file_prefix}/" - ~"^s3:\/", "").split("/")[0], it
+                "${it.toAbsolutePath()}".replaceAll("${params.star_file_prefix}/" - ~"^s3\:\/", "").split("/")[0], it
             ]
         })
         .groupTuple()
