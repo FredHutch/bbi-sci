@@ -1838,7 +1838,7 @@ process single_page_html {
 
     set -euo pipefail
 
-    rm a
+    generate_single_page.py
 
     """
 }
