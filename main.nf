@@ -1958,11 +1958,18 @@ workflow {
     reference with the appropriate set of reads from the gather_info step.
 
     *************/
+
+    // When matching the STAR files to their prefix, we need to remove the fixed prefix.
+    // However, that fixed prefix cannot contain the 's3:/', since that is not present in
+    // it.toAbsolutePath()
+    star_file_matching_prefix = params.star_file_prefix.replace("s3:/", "")
+    log.info"""${star_file_matching_prefix}"""
+
     Channel
         .fromPath("${params.star_file_prefix}/**")
         .map({
             it -> [
-                "${it.toAbsolutePath()}".replaceAll("${params.star_file_prefix}/" - ~"^s3\:\/", "").split("/")[0], it
+                "${it.toAbsolutePath()}".replaceAll("${star_file_matching_prefix}/", "").split("/")[0], it
             ]
         })
         .groupTuple()
