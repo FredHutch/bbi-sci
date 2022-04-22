@@ -1646,15 +1646,17 @@ process finish_log {
     printf "Git Repository, Version, Commit ID, Session ID: $workflow.repository, $workflow.revision, $workflow.commitId, $workflow.sessionId\n\n" >> ${key}_full.log
     printf "Command:\n$workflow.commandLine\n\n" >> ${key}_full.log
     printf "***** PARAMETERS *****: \n\n" >> ${key}_full.log
-    printf "    params.run_dir:               $params.run_dir\n" >> ${key}_full.log
     printf "    params.output_dir:            $params.output_dir\n" >> ${key}_full.log
+    printf "    params.project_name:          $params.project_name\n" >> ${key}_full.log
     printf "    params.sample_sheet:          $params.sample_sheet\n" >> ${key}_full.log
     printf "    params.demux_out:             $params.demux_out\n" >> ${key}_full.log
     printf "    params.level:                 $params.level\n" >> ${key}_full.log
     printf "    params.max_cores:             $params.max_cores\n" >> ${key}_full.log
     printf "    params.samples:               $params.samples\n" >> ${key}_full.log
     printf "    params.star_file:             $params.star_file\n" >> ${key}_full.log
+    printf "    params.star_file_prefix:      $params.star_file_prefix\n" >> ${key}_full.log
     printf "    params.gene_file:             $params.gene_file\n" >> ${key}_full.log
+    printf "    params.gene_file_prefix:      $params.gene_file_prefix\n" >> ${key}_full.log
     printf "    params.umi_cutoff:            $params.umi_cutoff\n" >> ${key}_full.log
     printf "    params.rt_barcode_file:       $params.rt_barcode_file\n" >> ${key}_full.log
     printf "    params.hash_list:             $params.hash_list\n" >> ${key}_full.log
