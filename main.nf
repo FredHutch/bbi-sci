@@ -1963,7 +1963,6 @@ workflow {
     // However, that fixed prefix cannot contain the 's3:/', since that is not present in
     // it.toAbsolutePath()
     star_file_matching_prefix = params.star_file_prefix.replace("s3:/", "")
-    log.info"""${star_file_matching_prefix}"""
 
     Channel
         .fromPath("${params.star_file_prefix}/**")
