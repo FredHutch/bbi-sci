@@ -1838,27 +1838,22 @@ process single_page_html {
 
 set -euo pipefail
 
-ls -lahtr
+# If the input files are symlinked
+if [ -L exp_dash ]; then
 
-ls exp_data
-ls exp_data/
+    echo "Resolving symlink"
+    mv exp_dash exp_dash_tmp
+    cp -rL exp_dash_tmp exp_dash
 
-# Resolve symlinks for locally staged files
-cp -rL exp_data exp_data_resolved
-
-# Remove the folder / symlink
-rm -r exp_data
-
-# Restore the original name
-mv exp_data_resolved exp_data
+fi
 
 # Copy the log data into the folder with the other JS files
-cp log_data.js exp_data/js/
+cp log_data.js exp_dash/js/
 
 # Generate a single-page HTML
 generate_single_page.py
 
-    """
+"""
 }
 
 
