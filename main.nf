@@ -1555,7 +1555,6 @@ Process: generate_dashboard
 
 process generate_dashboard {
     cache 'lenient'
-    publishDir path: "${params.output_dir}/", pattern: "exp_dash", mode: 'copy'
 
     input:
         path all_sample_stats
@@ -1773,7 +1772,6 @@ Process: zip_up_log_data
 
 process zip_up_log_data {
     cache 'lenient'
-    publishDir path: "${params.output_dir}/exp_dash/js/", pattern: "*.js", mode: 'copy'
 
     input:
         path summary_log
@@ -1846,6 +1844,9 @@ cp log_data.js js/
 
 # Generate a single-page HTML
 generate_single_page.py
+
+# Overwrite the template
+mv exp_dash_new.html exp_dash.html
 
 """
 }
