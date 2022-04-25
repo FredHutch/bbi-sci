@@ -1838,6 +1838,10 @@ process single_page_html {
 
     set -euo pipefail
 
+    # Resolve symlinks for locally staged files
+    mv exp_data exp_data_archived
+    cp -rL exp_data_archived exp_data
+
     # Copy the log data into the folder with the other JS files
     cp log_data.js exp_data/js/
 
