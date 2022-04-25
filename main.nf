@@ -1840,9 +1840,17 @@ set -euo pipefail
 
 ls -lahtr
 
+ls exp_data
+ls exp_data/
+
 # Resolve symlinks for locally staged files
-mv exp_data exp_data_archived
-cp -rL exp_data_archived exp_data
+cp -rL exp_data exp_data_resolved
+
+# Remove the folder / symlink
+rm -r exp_data
+
+# Restore the original name
+mv exp_data_resolved exp_data
 
 # Copy the log data into the folder with the other JS files
 cp log_data.js exp_data/js/
