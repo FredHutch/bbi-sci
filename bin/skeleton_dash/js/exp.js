@@ -18,7 +18,7 @@ function Header(props) {
       React.createElement(
         "ul",
         { className: "navbar-nav mr-auto" },
-        React.createElement("img", { src: "img/bbi_icon.png", height: "70", className: "d-inline-block align-top", alt: "" })
+        React.createElement("img", { src: "https://raw.githubusercontent.com/bbi-lab/bbi-sci/master/bin/skeleton_dash/img/bbi_icon.png", height: "70", className: "d-inline-block align-top", alt: "" })
       )
     ),
     React.createElement(
@@ -294,7 +294,7 @@ function BarnyardPane(props) {
     id: "nav" + safe_name + "-barn",
     tag: "nav" + safe_name + "-barn-tab",
     text: ["Collision rate: " + run_data.barn_collision],
-    plot: "img/Barnyard_plot.png"
+    plot: img_data["Barnyard_plot.png"]
   });
 }
 function QCPane(props) {
@@ -304,7 +304,7 @@ function QCPane(props) {
     id: "nav" + safe_name + "-cellqc",
     tag: "nav" + safe_name + "-cellqc-tab",
     text: [''],
-    plot: "img/" + props.sample_id + "_cell_qc.png"
+    plot: img_data[props.sample_id + "_cell_qc.png"]
   });
 }
 function ScrubPane(props) {
@@ -315,7 +315,7 @@ function ScrubPane(props) {
     id: "nav" + safe_name + "-scrub",
     tag: "nav" + safe_name + "-scrub-tab",
     text: ['Doublet count: ' + sample_stat.Doublet_Number + "\n\nDoublet rate: " + sample_stat.Doublet_Percent],
-    plot: "img/" + props.sample_id + "_scrublet_hist.png"
+    plot: img_data[props.sample_id + "_scrublet_hist.png"]
   });
 }
 function KneePane(props) {
@@ -325,7 +325,7 @@ function KneePane(props) {
     id: "nav" + safe_name + "-knee",
     tag: "nav" + safe_name + "-knee-tab",
     text: [''],
-    plot: "img/" + props.sample_id + "_knee_plot.png"
+    plot: img_data[props.sample_id + "_knee_plot.png"]
   });
 }
 function UMAPPane(props) {
@@ -335,7 +335,7 @@ function UMAPPane(props) {
     id: "nav" + safe_name + "-umap",
     tag: "nav" + safe_name + "-umap-tab",
     text: [''],
-    plot: "img/" + props.sample_id + "_UMAP.png"
+    plot: img_data[props.sample_id + "_UMAP.png"]
   });
 }
 
@@ -353,7 +353,7 @@ function GarnettPane(props) {
           null,
           'Garnett model run: ' + model
         ),
-        React.createElement("img", { src: "img/" + props.sample_id + "_" + model + "_Garnett.png", className: "rounded mx-auto d-block", alt: "...", style: { maxHeight: "50vh", width: "auto" } })
+        React.createElement("img", { src: img_data[props.sample_id + "_" + model + "_Garnett.png"], className: "rounded mx-auto d-block", alt: "...", style: { maxHeight: "50vh", width: "auto" } })
       );
     }) : props.garnett_model == "no_cells" ? React.createElement(
       "p",
@@ -367,7 +367,7 @@ function GarnettPane(props) {
         null,
         'Garnett model run: ' + props.garnett_model
       ),
-      React.createElement("img", { src: "img/" + props.sample_id + "_" + props.garnett_model + "_Garnett.png", className: "rounded mx-auto d-block", alt: "...", style: { maxHeight: "50vh", width: "auto" } })
+      React.createElement("img", { src: img_data[props.sample_id + "_" + props.garnett_model + "_Garnett.png"], className: "rounded mx-auto d-block", alt: "...", style: { maxHeight: "50vh", width: "auto" } })
     )
   );
 }
