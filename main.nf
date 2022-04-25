@@ -1836,17 +1836,19 @@ process single_page_html {
 
     """#!/bin/bash
 
-    set -euo pipefail
+set -euo pipefail
 
-    # Resolve symlinks for locally staged files
-    mv exp_data exp_data_archived
-    cp -rL exp_data_archived exp_data
+ls -lahtr
 
-    # Copy the log data into the folder with the other JS files
-    cp log_data.js exp_data/js/
+# Resolve symlinks for locally staged files
+mv exp_data exp_data_archived
+cp -rL exp_data_archived exp_data
 
-    # Generate a single-page HTML
-    generate_single_page.py
+# Copy the log data into the folder with the other JS files
+cp log_data.js exp_data/js/
+
+# Generate a single-page HTML
+generate_single_page.py
 
     """
 }
