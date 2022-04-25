@@ -1839,7 +1839,7 @@ process single_page_html {
 set -euo pipefail
 
 # Copy all of the staged files into the working directory
-cp -rL exp_dash ./
+cp -rL exp_dash/* ./
 
 # Copy the log data into the folder with the other JS files
 cp log_data.js js/
