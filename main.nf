@@ -1572,7 +1572,7 @@ process generate_dashboard {
 
     set -euo pipefail
 
-    generate_dash_data.R $all_sample_stats $params.project_name $cell_counts $all_collision $garnett_file
+    generate_dash_data.R $all_sample_stats "$params.project_name" $cell_counts $all_collision $garnett_file
 
     # Decompress the skeleton dash
     tar xvf "$skeleton_dash_tar"
