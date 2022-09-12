@@ -11,7 +11,7 @@ function Footer(props) {
         React.createElement(
           "div",
           { className: "footer-logo" },
-          React.createElement("img", { src: "https://brotmanbaty.org/wp-content/uploads/2018/06/BBI_Logo_Horizontal_Grey@2x.png", alt: "Footer Logo" })
+          React.createElement("img", { src: "https://brotmanbaty.org/images/BBI_Logo_REV.svg", alt: "Footer Logo" })
         )
       ),
       React.createElement(
@@ -44,17 +44,17 @@ function SubFooter(props) {
     React.createElement(
       "span",
       { className: "subfooter-logo sl-left" },
-      React.createElement("img", { src: "https://brotmanbaty.org/wp-content/uploads/2018/06/UWMedLogoGrey@2x.png", alt: "Partner Logo" })
+      React.createElement("img", { src: "https://images.ctfassets.net/gad02mmq3858/7vHe9SGp6yJ3W7ZbnE1ZFH/41bf0222e2c3f0ba68f0b389f6c89243/logo_UWMedicine_Color.svg", alt: "Partner Logo" })
     ),
     React.createElement(
       "span",
       { className: "subfooter-logo sl-mid" },
-      React.createElement("img", { src: "https://brotmanbaty.org/wp-content/uploads/2018/06/FredHutchLogoGrey@2x.png", alt: "Partner Logo" })
+      React.createElement("img", { src: "https://images.ctfassets.net/gad02mmq3858/Evsj9Rezh4aNHO4qiRtNK/a58c48d03765a90ac3bc63971e87e2a2/Group_335.svg", alt: "Partner Logo" })
     ),
     React.createElement(
       "span",
       { className: "subfooter-logo sl-right" },
-      React.createElement("img", { src: "https://brotmanbaty.org/wp-content/uploads/2018/06/SeattleChildrensLogoGrey@2x.png", alt: "Partner Logo" })
+      React.createElement("img", { src: "https://images.ctfassets.net/gad02mmq3858/7CSOxuV9kX7nqetiV2uXju/3ea142dec33c3a8e2649eb1c3783e26f/Group_334.svg", alt: "Partner Logo" })
     )
   );
 }

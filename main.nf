@@ -1555,7 +1555,6 @@ Process: generate_dashboard
 
 process generate_dashboard {
     cache 'lenient'
-    publishDir path: "${params.output_dir}/", pattern: "exp_dash", mode: 'copy'
 
     input:
         path all_sample_stats
@@ -1573,7 +1572,7 @@ process generate_dashboard {
 
     set -euo pipefail
 
-    generate_dash_data.R $all_sample_stats $params.project_name $cell_counts $all_collision $garnett_file
+    generate_dash_data.R $all_sample_stats "$params.project_name" $cell_counts $all_collision $garnett_file
 
     # Decompress the skeleton dash
     tar xvf "$skeleton_dash_tar"
@@ -1646,15 +1645,17 @@ process finish_log {
     printf "Git Repository, Version, Commit ID, Session ID: $workflow.repository, $workflow.revision, $workflow.commitId, $workflow.sessionId\n\n" >> ${key}_full.log
     printf "Command:\n$workflow.commandLine\n\n" >> ${key}_full.log
     printf "***** PARAMETERS *****: \n\n" >> ${key}_full.log
-    printf "    params.run_dir:               $params.run_dir\n" >> ${key}_full.log
     printf "    params.output_dir:            $params.output_dir\n" >> ${key}_full.log
+    printf "    params.project_name:          $params.project_name\n" >> ${key}_full.log
     printf "    params.sample_sheet:          $params.sample_sheet\n" >> ${key}_full.log
     printf "    params.demux_out:             $params.demux_out\n" >> ${key}_full.log
     printf "    params.level:                 $params.level\n" >> ${key}_full.log
     printf "    params.max_cores:             $params.max_cores\n" >> ${key}_full.log
     printf "    params.samples:               $params.samples\n" >> ${key}_full.log
     printf "    params.star_file:             $params.star_file\n" >> ${key}_full.log
+    printf "    params.star_file_prefix:      $params.star_file_prefix\n" >> ${key}_full.log
     printf "    params.gene_file:             $params.gene_file\n" >> ${key}_full.log
+    printf "    params.gene_file_prefix:      $params.gene_file_prefix\n" >> ${key}_full.log
     printf "    params.umi_cutoff:            $params.umi_cutoff\n" >> ${key}_full.log
     printf "    params.rt_barcode_file:       $params.rt_barcode_file\n" >> ${key}_full.log
     printf "    params.hash_list:             $params.hash_list\n" >> ${key}_full.log
@@ -1771,7 +1772,6 @@ Process: zip_up_log_data
 
 process zip_up_log_data {
     cache 'lenient'
-    publishDir path: "${params.output_dir}/exp_dash/js/", pattern: "*.js", mode: 'copy'
 
     input:
         path summary_log
@@ -1807,6 +1807,48 @@ process zip_up_log_data {
     echo '}' >> log_data.js
 
     """
+}
+
+
+
+/*************
+
+Process: single_page_html
+
+ Inputs:
+    dash_inputs - log_data.js, data.js, *.png
+
+ Outputs:
+    exp_dash.html - Single-page html
+
+*************/
+process single_page_html {
+    cache 'lenient'
+    publishDir path: "${params.output_dir}", mode: 'copy', overwrite: true
+
+    input:
+        path "*"
+
+    output:
+        path "*.html"
+
+    """#!/bin/bash
+
+set -euo pipefail
+
+# Copy all of the staged files into the working directory
+cp -rL exp_dash/* ./
+
+# Copy the log data into the folder with the other JS files
+cp log_data.js js/
+
+# Generate a single-page HTML
+generate_single_page.py
+
+# Overwrite the template
+mv exp_dash_new.html exp_dash.html
+
+"""
 }
 
 
@@ -1958,11 +2000,17 @@ workflow {
     reference with the appropriate set of reads from the gather_info step.
 
     *************/
+
+    // When matching the STAR files to their prefix, we need to remove the fixed prefix.
+    // However, that fixed prefix cannot contain the 's3:/', since that is not present in
+    // it.toAbsolutePath()
+    star_file_matching_prefix = params.star_file_prefix.replace("s3:/", "")
+
     Channel
         .fromPath("${params.star_file_prefix}/**")
         .map({
             it -> [
-                "s3:/${it.toAbsolutePath()}".replaceAll("${params.star_file_prefix}/", "").split("/")[0], it
+                "${it.toAbsolutePath()}".replaceAll("${star_file_matching_prefix}/", "").split("/")[0], it
             ]
         })
         .groupTuple()
@@ -2184,6 +2232,19 @@ workflow {
     zip_up_log_data(
         finish_log.out.summary_log.toSortedList(),
         finish_log.out.full_log.toSortedList()
+    )
+
+    // Generate a single-page HTML
+    single_page_html(
+        // exp_dash/img/ and exp_dash/js/data.js
+        generate_dashboard
+            .out
+            .exp_dash_out
+            .flatten()
+            .mix(
+                // log_data.js
+                zip_up_log_data.out
+            ).toSortedList()
     )
 
 }
