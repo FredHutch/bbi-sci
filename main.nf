@@ -508,8 +508,7 @@ process combine_logs {
     cache 'lenient'
 
     input:
-        file log_piece1
-        tuple val(key), path(log_piece2), path(log_piece3), path(log_piece4)
+        tuple path(log_piece1), val(key), path(log_piece2), path(log_piece3), path(log_piece4)
 
     output:
         tuple val(key), path("*_pre.log"), emit: "log_premerge"
@@ -2055,8 +2054,10 @@ workflow {
 
     // Combine logs
     combine_logs(
-        check_sample_sheet.out.log_piece1,
-        logs_to_combine
+        check_sample_sheet
+            .out
+            .log_piece1
+            .combine(logs_to_combine)
     )
 
     // Merge BAMs
