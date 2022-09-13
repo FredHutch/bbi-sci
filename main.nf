@@ -2053,6 +2053,9 @@ workflow {
         .groupTuple()
         .set { bams_to_merge }
 
+    check_sample_sheet.out.log_piece1.view()
+    logs_to_combine.view()
+
     // Combine logs
     combine_logs(
         check_sample_sheet.out.log_piece1,
